@@ -1,0 +1,80 @@
+(function() {
+    // 1. Criar o Container do Menu
+    const menu = document.createElement('div');
+    menu.id = 'eng-menu';
+    menu.style = `
+        position: absolute; left: 10px; top: 10px; width: 220px; 
+        background: rgba(0, 0, 0, 0.9); border: 2px solid #007bff; 
+        border-radius: 10px; padding: 12px; color: white; 
+        z-index: 10002; font-family: 'Segoe UI', Tahoma, sans-serif; 
+        font-size: 11px; box-shadow: 0 0 15px rgba(0,123,255,0.5);
+    `;
+
+    menu.innerHTML = `
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+            <b style="color:#007bff; font-size:13px;">⚙️ PAINEL DE CONTROLE</b>
+            <button onclick="this.parentElement.parentElement.remove()" style="background:red; color:white; border:none; border-radius:3px; cursor:pointer;">X</button>
+        </div>
+
+        <label>☀️ Brilho (Intensidade):</label>
+        <input type="range" id="m-light" min="0" max="10" step="0.1" value="2" style="width:100%;">
+
+        <label>🌫️ Distância de Visão (Fog):</label>
+        <input type="range" id="m-fog" min="0" max="0.05" step="0.001" value="0.002" style="width:100%;">
+
+        <hr style="border:0; border-top:1px solid #333; margin:10px 0;">
+
+        <label>📺 Resolução (Performance):</label>
+        <div style="display:flex; gap:5px; margin-top:5px;">
+            <button onclick="renderer.setPixelRatio(0.3)" style="flex:1; background:#444; color:white; border:1px solid #666; font-size:9px;">TV VELHA</button>
+            <button onclick="renderer.setPixelRatio(1.0)" style="flex:1; background:#444; color:white; border:1px solid #666; font-size:9px;">HD (PADRÃO)</button>
+        </div>
+
+        <hr style="border:0; border-top:1px solid #333; margin:10px 0;">
+
+        <button id="btn-tex" style="width:100%; background:#28a745; color:white; border:none; padding:8px; border-radius:5px; font-weight:bold; cursor:pointer;">♻️ RECALCULAR TEXTURAS</button>
+        
+        <p style="font-size:9px; color:#888; margin-top:8px; text-align:center;">Use o botão verde se o mapa ficar preto.</p>
+    `;
+
+    document.body.appendChild(menu);
+
+    // --- LÓGICA DE CONTROLE ---
+
+    // Ajuste de Luz Ambiental
+    document.getElementById('m-light').addEventListener('input', (e) => {
+        scene.children.forEach(c => { if(c.isAmbientLight) c.intensity = e.target.value; });
+    });
+
+    // Ajuste de Fog (Neblina para esconder o fim do mapa e poupar RAM)
+    scene.fog = new THREE.FogExp2(0x87CEEB, 0.002);
+    document.getElementById('m-fog').addEventListener('input', (e) => {
+        scene.fog.density = e.target.value;
+    });
+
+    // Botão de Emergência para Texturas
+    document.getElementById('btn-tex').onclick = function() {
+        if(!mapModel) return alert("Carregue um mapa primeiro!");
+        mapModel.traverse(node => {
+            if(node.isMesh && node.material) {
+                const materials = Array.isArray(node.material) ? node.material : [node.material];
+                materials.forEach(mat => {
+                    mat.precision = "lowp"; // Força economia de energia
+                    if(mat.map) {
+                        mat.map.anisotropy = 1; // Desliga filtros caros da TV
+                        mat.map.needsUpdate = true;
+                    }
+                    mat.needsUpdate = true;
+                });
+            }
+        });
+        alert("Gráficos otimizados para estabilidade!");
+    };
+
+    // Tornar o menu arrastável (Simples)
+    let isDragging = false;
+    menu.onmousedown = (e) => { if(e.target.tagName !== 'INPUT' && e.target.tagName !== 'BUTTON') isDragging = true; };
+    window.onmousemove = (e) => { if(isDragging) { menu.style.left = e.clientX - 100 + 'px'; menu.style.top = e.clientY - 10 + 'px'; } };
+    window.onmouseup = () => { isDragging = false; };
+
+})();
