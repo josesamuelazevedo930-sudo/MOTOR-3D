@@ -1,0 +1,79 @@
+(function() {
+    // 1. Sinalização Visual
+    const tag = document.createElement('div');
+    tag.style = "position:absolute; top:5px; left:5px; background:red; color:white; padding:3px; font-size:9px; z-index:10000; border-radius:3px; font-weight:bold;";
+    tag.innerText = "MODO: CARREGAMENTO FORÇADO (EXTREMO)";
+    document.body.appendChild(tag);
+
+    // 2. Configuração do Renderizador para modo de sobrevivência
+    renderer.setPixelRatio(0.4); // Reduz uso de VRAM drasticamente
+    renderer.shadowMap.enabled = false; // Desativa cálculos de sombra
+    renderer.gc = true; // Sugestão de Garbage Collection (limpeza de lixo)
+
+    // 3. Substituição da função original de carregamento
+    window.loadMap = function(url) {
+        document.getElementById('loader').style.display = 'block';
+        document.getElementById('loader').innerText = "V-RAM: LIMPANDO MEMÓRIA...";
+
+        // LIMPEZA AGRESSIVA DE MEMÓRIA (Libera RAM antes de carregar o novo)
+        if (mapModel) {
+            scene.remove(mapModel);
+            mapModel.traverse(n => {
+                if (n.isMesh) {
+                    if (n.geometry) n.geometry.dispose();
+                    if (n.material) {
+                        const mats = Array.isArray(n.material) ? n.material : [n.material];
+                        mats.forEach(m => {
+                            if (m.map) m.map.dispose();
+                            m.dispose();
+                        });
+                    }
+                }
+            });
+            mapModel = null;
+        }
+
+        // 4. Carregamento com Otimização de Atributos
+        loaderGLTF.load(url, (gltf) => {
+            const tempModel = gltf.scene;
+
+            tempModel.traverse(node => {
+                if (node.isMesh) {
+                    // Otimiza a Geometria (Remove atributos inúteis como cores de vértices se existirem)
+                    if (node.geometry.attributes.color) node.geometry.deleteAttribute('color');
+                    
+                    // Otimiza Materiais
+                    if (node.material) {
+                        const materials = Array.isArray(node.material) ? node.material : [node.material];
+                        materials.forEach(mat => {
+                            // Mantém a textura, mas desativa recursos pesados dela
+                            if (mat.map) {
+                                mat.map.generateMipmaps = false; 
+                                mat.map.minFilter = THREE.LinearFilter;
+                                mat.map.magFilter = THREE.LinearFilter;
+                            }
+                            mat.precision = "lowp"; // Shader de baixa precisão (mais rápido para TV)
+                            mat.flatShading = true; // Cálculos de luz simplificados
+                        });
+                    }
+                    node.matrixAutoUpdate = false; 
+                    node.updateMatrix();
+                }
+            });
+
+            mapModel = tempModel;
+            mapModel.scale.set(30, 30, 30);
+            scene.add(mapModel);
+            document.getElementById('loader').style.display = 'none';
+            alert("Mapa pesado injetado com sucesso!");
+        }, (xhr) => {
+            let p = Math.round((xhr.loaded / (xhr.total || 1000000)) * 100);
+            document.getElementById('loader').innerText = "FORÇANDO CARGA: " + p + "%";
+        }, (err) => {
+            document.getElementById('loader').innerText = "ERRO: TENTANDO NOVAMENTE...";
+            setTimeout(() => window.loadMap(url), 3000);
+        });
+    };
+    
+    console.log("Sistema de Carregamento Forçado Ativo");
+})();
