@@ -1,0 +1,29 @@
+// Criar o painel de gráficos via Script
+(function() {
+    const gui = document.createElement('div');
+    gui.id = 'graphics-menu';
+    gui.style = "position:absolute; left:20px; top:185px; width:200px; background:rgba(0,0,0,0.9); border:2px solid #28a745; border-radius:10px; padding:15px; color:white; z-index:1000; font-family:sans-serif; font-size:12px;";
+    gui.innerHTML = `
+        <b style="color:#28a745">Ajuste de Gráficos</b><br><br>
+        Luz (Brilho): <br>
+        <input type="range" id="light-range" min="0" max="5" step="0.1" value="2" style="width:100%"><br><br>
+        Resolução (Pixel): <br>
+        <button onclick="renderer.setPixelRatio(0.5); alert('Baixa')">BAIXA (TV)</button>
+        <button onclick="renderer.setPixelRatio(1.5); alert('Alta')">ALTA (PC)</button><br><br>
+        Cor do Céu:<br>
+        <input type="color" id="sky-color" value="#87CEEB" style="width:100%"><br><br>
+        <button onclick="document.getElementById('graphics-menu').remove()" style="width:100%; background:#ff3333; color:white; border:none; padding:5px; border-radius:5px;">FECHAR MENU</button>
+    `;
+    document.body.appendChild(gui);
+
+    // Eventos de atualização
+    document.getElementById('light-range').addEventListener('input', (e) => {
+        scene.children.forEach(child => {
+            if(child.isAmbientLight) child.intensity = e.target.value;
+        });
+    });
+
+    document.getElementById('sky-color').addEventListener('input', (e) => {
+        scene.background.set(e.target.value);
+    });
+})();
