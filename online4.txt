@@ -1,0 +1,120 @@
+if(document.getElementById('ui-multi')) document.getElementById('ui-multi').remove();
+if (!window.Peer) {
+    let s = document.createElement('script');
+    s.src = "https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js";
+    document.head.appendChild(s);
+}
+
+// 1. INTERFACE ULTRA LEVE E COMPACTA
+const uiMulti = document.createElement('div');
+uiMulti.id = 'ui-multi';
+uiMulti.style.cssText = "position:absolute; top:20px; left:20px; z-index:10000; font-family:sans-serif;";
+uiMulti.innerHTML = `
+    <button id="btn-toggle-chat" style="background:#007bff; color:white; border:none; padding:10px; border-radius:8px; font-weight:bold; box-shadow: 0 4px #000; display:none;">💬 CHAT</button>
+    
+    <div id="panel-mp" style="background:rgba(0,0,0,0.95); padding:12px; color:white; border-radius:10px; border:1px solid #444; width:200px;">
+        <b style="color:#00ffff; font-size:14px;">SIRI TV-LINK</b><br>
+        <small id="status-net" style="color:yellow">Aguardando...</small><br>
+        <input type="text" id="my-custom-id" placeholder="Nome da Sala" style="width:90%; padding:5px; margin:5px 0; background:#222; color:#fff; border:1px solid #444;">
+        <button id="btn-start-peer" style="width:100%; background:#007bff; color:white; border:none; padding:8px; margin-bottom:10px; border-radius:5px;">CRIAR</button>
+        <input type="text" id="target-id" placeholder="ID do Amigo" style="width:90%; padding:5px; margin-bottom:5px; background:#222; color:#fff; border:1px solid #444;">
+        <button id="btn-con" style="width:100%; background:#28a745; color:white; border:none; padding:8px; border-radius:5px;">ENTRAR</button>
+    </div>
+
+    <div id="chat-window" style="display:none; background:rgba(0,0,0,0.9); width:220px; border-radius:8px; border:1px solid #444; margin-top:10px; padding:8px;">
+        <div id="chat-logs" style="height:80px; overflow-y:auto; font-size:11px; background:#000; padding:5px; margin-bottom:5px; border:1px solid #333; color:#fff;"></div>
+        <div style="display:flex; gap:2px;">
+            <input type="text" id="chat-input" placeholder="..." style="flex:1; background:#222; color:#fff; border:1px solid #444; font-size:12px;">
+            <button id="btn-send" style="background:#007bff; color:white; border:none; padding:5px; border-radius:4px;">OK</button>
+        </div>
+    </div>
+`;
+document.body.appendChild(uiMulti);
+
+let peer, conn, remotePlayer, remoteLabel;
+let myNick = "Player";
+
+// 2. TOGGLE IGUAL AO TEU MENU
+document.getElementById('btn-toggle-chat').onclick = () => {
+    let cw = document.getElementById('chat-window');
+    cw.style.display = cw.style.display === 'none' ? 'block' : 'none';
+};
+
+// 3. LÓGICA DE REDE OTIMIZADA (100ms em vez de 50ms)
+document.getElementById('btn-start-peer').onclick = () => {
+    let cid = document.getElementById('my-custom-id').value.trim();
+    if(!cid) return;
+    peer = new Peer(cid);
+    peer.on('open', (id) => {
+        document.getElementById('status-net').innerText = "SALA: " + id;
+        document.getElementById('status-net').style.color = "#0f0";
+    });
+    peer.on('connection', (c) => { conn = c; initNetwork(); });
+};
+
+document.getElementById('btn-con').onclick = () => {
+    let tid = document.getElementById('target-id').value.trim();
+    if(!tid) return;
+    if(!peer) peer = new Peer();
+    conn = peer.connect(tid);
+    initNetwork();
+};
+
+function initNetwork() {
+    conn.on('open', () => {
+        document.getElementById('panel-mp').style.display = 'none';
+        document.getElementById('btn-toggle-chat').style.display = 'block';
+        
+        // LOOP OTIMIZADO PARA TV (Menos frequência = Menos Lag)
+        setInterval(() => {
+            if(conn && conn.open) {
+                conn.send({
+                    type: 'sync',
+                    x: Math.round(player.position.x * 10) / 10, // Arredondar economiza dados
+                    y: Math.round(player.position.y * 10) / 10,
+                    z: Math.round(player.position.z * 10) / 10,
+                    ry: Math.round(player.rotation.y * 10) / 10,
+                    skin: window.currentSkinUrl
+                });
+            }
+        }, 100); // 100ms é o ideal para TVs velhas
+    });
+
+    conn.on('data', (data) => {
+        if(data.type === 'sync') handleSync(data);
+        if(data.type === 'chat') handleChat(data);
+    });
+}
+
+function handleSync(data) {
+    if(!remotePlayer) {
+        const geo = new THREE.BoxGeometry(2, 2, 2);
+        remotePlayer = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({color: 0x00ff00}));
+        scene.add(remotePlayer);
+        // Carrega skin real só se o processador estiver livre
+        if(data.skin) {
+            loaderGLTF.load(data.skin, (gltf) => {
+                scene.remove(remotePlayer);
+                remotePlayer = gltf.scene;
+                scene.add(remotePlayer);
+            });
+        }
+    }
+    remotePlayer.position.set(data.x, data.y, data.z);
+    remotePlayer.rotation.y = data.ry;
+}
+
+function handleChat(data) {
+    const log = document.getElementById('chat-logs');
+    log.innerHTML += `<div><b style="color:#0af">${data.nick || 'Amigo'}:</b> ${data.msg}</div>`;
+    log.scrollTop = log.scrollHeight;
+}
+
+document.getElementById('btn-send').onclick = () => {
+    let inp = document.getElementById('chat-input');
+    if(inp.value && conn && conn.open) {
+        conn.send({ type: 'chat', msg: inp.value });
+        handleChat({nick: 'Eu', msg: inp.value});
+        inp.value = "";
+    }
+};
