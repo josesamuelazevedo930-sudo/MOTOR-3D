@@ -1,0 +1,63 @@
+(function() {
+    // 1. Sinalização do Script
+    const aviso = document.createElement('div');
+    aviso.style = "position:absolute; bottom:40px; left:10px; background:#007bff; color:white; padding:5px; border-radius:5px; font-size:10px; z-index:10000; font-weight:bold;";
+    aviso.innerText = "🛡️ COLISÃO AVANÇADA: ATIVA";
+    document.body.appendChild(aviso);
+
+    // 2. Variáveis de Colisão
+    const wallRaycaster = new THREE.Raycaster();
+    const collisionDist = 3.5; // Distância da parede para ele parar
+
+    // 3. Sobrescrever a lógica de movimento no loop principal (animate)
+    // Vamos modificar a função original injetando a checagem de parede
+    const oldAnimate = window.animate;
+    
+    // Criamos uma nova lógica de movimento que substitui a simples
+    window.checkWalls = function(nextPos) {
+        if (!mapModel || !player) return nextPos;
+
+        // Direções: Frente, Trás, Esquerda, Direita
+        const directions = [
+            new THREE.Vector3(Math.sin(camRot), 0, Math.cos(camRot)), // Frente
+            new THREE.Vector3(-Math.sin(camRot), 0, -Math.cos(camRot)), // Trás
+            new THREE.Vector3(Math.cos(camRot), 0, -Math.sin(camRot)), // Direita
+            new THREE.Vector3(-Math.cos(camRot), 0, Math.sin(camRot))  // Esquerda
+        ];
+
+        let canMove = true;
+        for (let dir of directions) {
+            wallRaycaster.set(player.position, dir);
+            const intersects = wallRaycaster.intersectObject(mapModel, true);
+            
+            if (intersects.length > 0 && intersects[0].distance < collisionDist) {
+                // Se detectar parede muito perto na direção que estamos indo, bloqueia
+                if (keys['KeyW'] && dir.z > 0.5) return player.position; 
+                if (keys['KeyS'] && dir.z < -0.5) return player.position;
+            }
+        }
+        return nextPos;
+    };
+
+    // Ajuste direto no loop de animação para usar a nova trava
+    const originalUpdate = animate;
+    window.animate = function() {
+        // Esta parte rodará dentro do requestAnimationFrame original
+        if (player && mapModel && !fly) {
+            // Se o player tentar entrar em algo, empurramos ele um pouco para trás
+            let origin = new THREE.Vector3(player.position.x, player.position.y + 2, player.position.z);
+            let forward = new THREE.Vector3(Math.sin(camRot), 0, Math.cos(camRot));
+            
+            wallRaycaster.set(origin, forward.negate()); // Checa frente
+            let hit = wallRaycaster.intersectObject(mapModel, true);
+            
+            if (hit.length > 0 && hit[0].distance < collisionDist) {
+                // Se bater, anula a velocidade de movimento naquela direção
+                player.position.addScaledVector(forward, 0.5); 
+            }
+        }
+        originalUpdate();
+    };
+
+    console.log("Sistema de colisão pro-ativa injetado.");
+})();
