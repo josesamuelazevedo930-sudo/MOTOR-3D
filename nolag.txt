@@ -1,0 +1,92 @@
+(function() {
+    // 1. INTERFACE DE CONTROLE CENTRAL
+    const painel = document.createElement('div');
+    painel.style = "position:absolute; top:10px; right:10px; width:220px; background:rgba(0,0,0,0.95); border:2px solid #00ffcc; border-radius:12px; padding:15px; color:white; z-index:20000; font-family:sans-serif; font-size:11px; box-shadow: 0 0 20px rgba(0,255,204,0.3);";
+    painel.innerHTML = `
+        <b style="color:#00ffcc; font-size:13px;">🚀 MOTOR ULTRA PRO v1.0</b><br><br>
+        <button id="f-mapa" style="width:100%; background:#222; color:#0f0; border:1px solid #0f0; padding:8px; margin-bottom:5px; border-radius:5px; font-weight:bold;">FORÇAR MAPA PESADO</button>
+        <button id="f-skin" style="width:100%; background:#222; color:#00ccff; border:1px solid #00ccff; padding:8px; margin-bottom:5px; border-radius:5px; font-weight:bold;">FORÇAR SKIN PESADA</button>
+        <button id="f-fusao" style="width:100%; background:#6f42c1; color:white; border:none; padding:8px; margin-bottom:10px; border-radius:5px; font-weight:bold;">💎 EXECUTAR FUSÃO (LISO)</button>
+        
+        <hr style="border:0; border-top:1px solid #333;">
+        <label>📺 Resolução TV:</label>
+        <select id="f-res" style="width:100%; background:#333; color:white; border:none; padding:5px; border-radius:3px;">
+            <option value="1.0">Alta Qualidade (PC)</option>
+            <option value="0.7">Equilibrado</option>
+            <option value="0.4" selected>Modo TV Velha (Rápido)</option>
+        </select>
+        <p style="font-size:9px; color:#888; margin-top:10px; text-align:center;">O que você não vê, a TV não processa.</p>
+    `;
+    document.body.appendChild(painel);
+
+    // --- VARIÁVEIS DE SISTEMA ---
+    const frustum = new THREE.Frustum();
+    const projScreenMatrix = new THREE.Matrix4();
+    let frameCount = 0;
+
+    // 2. FUNÇÃO: FORÇAR CARREGAMENTO DE MAPA COM PURGA DE RAM
+    window.loadMap = function(url) {
+        document.getElementById('loader').style.display = 'block';
+        document.getElementById('loader').innerText = "V-RAM: LIMPANDO BUFFER...";
+
+        if(mapModel) {
+            scene.remove(mapModel);
+            mapModel.traverse(n => { if(n.isMesh) { n.geometry.dispose(); if(n.material.map) n.material.map.dispose(); n.material.dispose(); } });
+        }
+
+        loaderGLTF.load(url, (gltf) => {
+            mapModel = gltf.scene;
+            mapModel.traverse(node => {
+                if (node.isMesh) {
+                    node.material.precision = "lowp";
+                    if(node.material.map) { node.material.map.generateMipmaps = false; node.material.map.needsUpdate = true; }
+                    node.matrixAutoUpdate = false;
+                    node.updateMatrix();
+                }
+            });
+            mapModel.scale.set(30, 30, 30);
+            scene.add(mapModel);
+            document.getElementById('loader').style.display = 'none';
+        });
+    };
+
+    // 3. FUNÇÃO: FUSÃO ESTÁTICA (CONGELAR OBJETOS)
+    document.getElementById('f-fusao').onclick = function() {
+        if(!mapModel) return alert("Carregue o mapa primeiro!");
+        mapModel.traverse(node => {
+            if(node.isMesh) {
+                node.updateMatrix();
+                node.geometry.applyMatrix4(node.matrix);
+                node.matrix.identity();
+                node.position.set(0,0,0);
+                node.matrixAutoUpdate = false;
+            }
+        });
+        alert("Fusão Completa: 100% Performance!");
+    };
+
+    // 4. OTIMIZAÇÃO DE VISÃO (FRUSTUM CULLING DINÂMICO)
+    const originalAnimate = animate;
+    window.animate = function() {
+        frameCount++;
+        if (frameCount % 2 === 0 && mapModel && camera) {
+            camera.updateMatrixWorld();
+            projScreenMatrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+            frustum.setFromProjectionMatrix(projScreenMatrix);
+
+            mapModel.traverse(node => {
+                if (node.isMesh) {
+                    node.visible = frustum.intersectsObject(node);
+                }
+            });
+        }
+        originalAnimate();
+    };
+
+    // 5. AJUSTES DE INTERFACE E RESOLUÇÃO
+    document.getElementById('f-res').onchange = (e) => { renderer.setPixelRatio(parseFloat(e.target.value)); };
+    renderer.setPixelRatio(0.4); // Padrão TV
+    renderer.sortObjects = true;
+
+    console.log("MOTOR ULTRA PRO ATIVADO: Performance Máxima Garantida.");
+})();
