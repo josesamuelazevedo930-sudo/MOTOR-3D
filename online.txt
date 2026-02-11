@@ -1,0 +1,150 @@
+// 1. CARREGAR DEPENDÊNCIAS (PeerJS)
+if (!window.Peer) {
+    let s = document.createElement('script');
+    s.src = "https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js";
+    document.head.appendChild(s);
+}
+
+// 2. INTERFACE E CHAT
+const uiMulti = document.createElement('div');
+uiMulti.style.cssText = "position:absolute; top:10px; left:10px; background:rgba(0,0,0,0.85); padding:12px; color:white; border-radius:8px; z-index:10000; font-family:sans-serif; border:1px solid #00ffff; width:180px;";
+uiMulti.innerHTML = `
+    <div id="setup-mp">
+        <b style="color:#00ffff">SIRI ONLINE</b><br>
+        <small>Meu ID: <span id="my-id">...</span></small><br>
+        <input type="text" id="nick" placeholder="Seu Nick" style="width:100%; margin-top:5px; background:#222; color:#fff; border:1px solid #444;">
+        <input type="text" id="target-id" placeholder="ID do Amigo" style="width:100%; margin-top:5px; background:#222; color:#fff; border:1px solid #444;">
+        <button id="btn-con" style="width:100%; margin-top:5px; background:#28a745; color:white; border:none; padding:5px; border-radius:4px;">CONECTAR</button>
+    </div>
+    <div id="chat-box" style="display:none; margin-top:10px;">
+        <div id="chat-logs" style="height:100px; overflow-y:auto; font-size:10px; background:#111; padding:5px; margin-bottom:5px; border:1px solid #333;"></div>
+        <input type="text" id="chat-input" placeholder="Diga algo..." style="width:100%; background:#222; color:#fff; border:1px solid #444; font-size:11px;">
+    </div>
+`;
+document.body.appendChild(uiMulti);
+
+// VARIÁVEIS DE CONTROLE
+let peer, conn, remotePlayer, remoteLabel, remoteSkinUrl, remoteMapUrl;
+let myNick = "Player";
+let currentSkin = "";
+let currentMap = "";
+
+// 3. CAPTURAR MUDANÇAS AUTOMATICAMENTE (Intercepter)
+const originalLoadModel = window.loadModel;
+window.loadModel = function(url) {
+    currentSkin = url;
+    originalLoadModel.apply(this, arguments);
+};
+
+const originalLoadMap = window.loadMap;
+window.loadMap = function(url) {
+    currentMap = url;
+    originalLoadMap.apply(this, arguments);
+};
+
+// 4. LÓGICA DE REDE
+setTimeout(() => {
+    peer = new Peer();
+    peer.on('open', id => document.getElementById('my-id').innerText = id);
+    peer.on('connection', c => { conn = c; initNetwork(); });
+
+    document.getElementById('btn-con').onclick = () => {
+        myNick = document.getElementById('nick').value || "Player";
+        conn = peer.connect(document.getElementById('target-id').value);
+        initNetwork();
+    };
+}, 1500);
+
+function initNetwork() {
+    document.getElementById('setup-mp').style.display = 'none';
+    document.getElementById('chat-box').style.display = 'block';
+
+    conn.on('open', () => {
+        alert("CONECTADO!");
+        
+        // Loop de Envio
+        setInterval(() => {
+            if(conn.open) {
+                conn.send({
+                    type: 'sync',
+                    nick: myNick,
+                    x: player.position.x, y: player.position.y, z: player.position.z,
+                    ry: player.rotation.y,
+                    skin: currentSkin,
+                    map: currentMap
+                });
+            }
+        }, 50);
+
+        // Envio de Chat
+        document.getElementById('chat-input').onkeydown = (e) => {
+            if(e.key === 'Enter') {
+                let msg = e.target.value;
+                conn.send({ type: 'chat', msg: msg, nick: myNick });
+                addChatLog(myNick, msg);
+                e.target.value = "";
+            }
+        };
+    });
+
+    conn.on('data', data => {
+        if(data.type === 'sync') handleSync(data);
+        if(data.type === 'chat') handleChat(data);
+    });
+}
+
+// 5. ATUALIZAR MUNDO
+function handleSync(data) {
+    // Sincroniza Mapa
+    if(data.map && data.map !== currentMap) {
+        currentMap = data.map;
+        originalLoadMap(data.map);
+    }
+
+    // Sincroniza Skin do Amigo
+    if(!remotePlayer || data.skin !== remoteSkinUrl) {
+        if(remotePlayer) scene.remove(remotePlayer);
+        remoteSkinUrl = data.skin;
+        loaderGLTF.load(data.skin, (gltf) => {
+            remotePlayer = gltf.scene;
+            scene.add(remotePlayer);
+            createLabel(data.nick);
+        });
+    }
+
+    // Move Amigo
+    if(remotePlayer) {
+        remotePlayer.position.set(data.x, data.y, data.z);
+        remotePlayer.rotation.y = data.ry;
+        if(remoteLabel) {
+            remoteLabel.position.set(data.x, data.y + 12, data.z);
+            remoteLabel.lookAt(camera.position);
+        }
+    }
+}
+
+function handleChat(data) {
+    addChatLog(data.nick, data.msg);
+    // Aqui daria para colocar um balão flutuante
+}
+
+function addChatLog(nick, msg) {
+    const log = document.getElementById('chat-logs');
+    log.innerHTML += `<div><b>${nick}:</b> ${msg}</div>`;
+    log.scrollTop = log.scrollHeight;
+}
+
+// Criar Nick acima da cabeça (Usando Canvas para simplicidade)
+function createLabel(text) {
+    if(remoteLabel) scene.remove(remoteLabel);
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    ctx.font = 'Bold 40px Arial';
+    ctx.fillStyle = 'cyan';
+    ctx.fillText(text, 10, 50);
+    const tex = new THREE.CanvasTexture(canvas);
+    const spriteMat = new THREE.SpriteMaterial({ map: tex });
+    remoteLabel = new THREE.Sprite(spriteMat);
+    remoteLabel.scale.set(8, 4, 1);
+    scene.add(remoteLabel);
+}
