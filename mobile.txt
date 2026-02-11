@@ -1,0 +1,91 @@
+// 1. ESCONDER CONTROLES DE PC (Opcional, se houver sobreposição)
+// O motor original já tem botões, mas vamos focar em adicionar o Joystick
+
+// 2. CRIAR ESTILOS DO JOYSTICK
+const style = document.createElement('style');
+style.innerHTML = `
+    #joystick-base { position: absolute; bottom: 50px; left: 50px; width: 120px; height: 120px; background: rgba(255,255,255,0.2); border: 2px solid #fff; border-radius: 50%; z-index: 1000; touch-action: none; }
+    #joystick-stick { position: absolute; top: 35px; left: 35px; width: 50px; height: 50px; background: #fff; border-radius: 50%; }
+    #touch-zone { position: absolute; top: 0; right: 0; width: 50%; height: 100%; z-index: 998; touch-action: none; }
+`;
+document.head.appendChild(style);
+
+// 3. CRIAR ELEMENTOS VISUAIS
+const base = document.createElement('div'); base.id = 'joystick-base';
+const stick = document.createElement('div'); stick.id = 'joystick-stick';
+const touchZone = document.createElement('div'); touchZone.id = 'touch-zone';
+base.appendChild(stick);
+document.body.appendChild(base);
+document.body.appendChild(touchZone);
+
+// VARIÁVEIS DE CONTROLE
+let joyPos = { x: 0, y: 0 }, isJoyDown = false;
+let moveX = 0, moveZ = 0;
+let lastTouchX = 0, lastTouchY = 0;
+
+// 4. LÓGICA DO JOYSTICK (MOVIMENTAÇÃO)
+base.addEventListener('touchstart', (e) => { isJoyDown = true; });
+window.addEventListener('touchmove', (e) => {
+    if (!isJoyDown) return;
+    let touch = e.touches[0];
+    let rect = base.getBoundingClientRect();
+    let centerX = rect.left + rect.width / 2;
+    let centerY = rect.top + rect.height / 2;
+    
+    let dx = touch.clientX - centerX;
+    let dy = touch.clientY - centerY;
+    let dist = Math.min(Math.sqrt(dx*dx + dy*dy), 50);
+    let angle = Math.atan2(dy, dx);
+
+    joyPos.x = Math.cos(angle) * dist;
+    joyPos.y = Math.sin(angle) * dist;
+
+    stick.style.transform = `translate(${joyPos.x}px, ${joyPos.y}px)`;
+
+    // Normalizar para movimento do motor
+    moveX = (joyPos.x / 50);
+    moveZ = (joyPos.y / 50);
+});
+
+window.addEventListener('touchend', () => {
+    isJoyDown = false;
+    stick.style.transform = `translate(0px, 0px)`;
+    moveX = 0; moveZ = 0;
+});
+
+// 5. LÓGICA DE SWIPE (CÂMERA)
+touchZone.addEventListener('touchstart', (e) => {
+    lastTouchX = e.touches[0].clientX;
+});
+
+touchZone.addEventListener('touchmove', (e) => {
+    let touch = e.touches[0];
+    let deltaX = touch.clientX - lastTouchX;
+    camRot -= deltaX * 0.005; // Gira a câmera global do seu motor
+    lastTouchX = touch.clientX;
+});
+
+// 6. INJETAR NO LOOP DE ANIMAÇÃO DO MOTOR
+// Sobrescrevemos a lógica de teclado usando as variáveis do joystick
+function updateMobileMovement() {
+    if (player && (moveX !== 0 || moveZ !== 0)) {
+        let f = new THREE.Vector3(Math.sin(camRot), 0, Math.cos(camRot));
+        let r = new THREE.Vector3().crossVectors(new THREE.Vector3(0,1,0), f);
+        
+        // moveZ é frente/atrás, moveX é esquerda/direita
+        player.position.addScaledVector(f, -moveZ * moveSpeed);
+        player.position.addScaledVector(r, -moveX * moveSpeed);
+        
+        let rotBase = Math.atan2(moveX, moveZ) + camRot + Math.PI;
+        player.rotation.y = animInverted ? rotBase + Math.PI : rotBase;
+        
+        if (typeof fadeToAction === "function") fadeToAction('walk');
+    } else {
+        if (typeof fadeToAction === "function") fadeToAction('idle');
+    }
+}
+
+// Rodar a atualização junto com o renderizador
+setInterval(updateMobileMovement, 16);
+
+alert("Controles Mobile Ativados! Use o lado esquerdo para andar e o direito para girar a câmera.");
