@@ -1,0 +1,98 @@
+// 1. LIMPAR CONTROLES ANTIGOS (Evita duplicar se você executar o script de novo)
+if(document.getElementById('joystick-base')) document.getElementById('joystick-base').remove();
+if(document.getElementById('touch-zone')) document.getElementById('touch-zone').remove();
+
+// 2. ESTILOS COM "POINTER-EVENTS" INTELIGENTE
+const style = document.createElement('style');
+style.id = "mobile-style";
+style.innerHTML = `
+    #joystick-base { 
+        position: absolute; bottom: 50px; left: 50px; width: 120px; height: 120px; 
+        background: rgba(255,255,255,0.1); border: 2px solid rgba(255,255,255,0.4); 
+        border-radius: 50%; z-index: 10; touch-action: none; 
+    }
+    #joystick-stick { 
+        position: absolute; top: 35px; left: 35px; width: 50px; height: 50px; 
+        background: rgba(255,255,255,0.8); border-radius: 50%; 
+    }
+    #touch-zone { 
+        position: absolute; top: 0; right: 0; width: 60%; height: 100%; 
+        z-index: 5; touch-action: none; 
+        /* Isso permite que cliques passem para os botões se eles estiverem embaixo */
+        pointer-events: auto; 
+    }
+    /* Garantir que os botões originais fiquem SEMPRE na frente de tudo */
+    .ui-btn, .panel, .zoom-ctrl { z-index: 9999 !important; }
+`;
+document.head.appendChild(style);
+
+// 3. CRIAR ELEMENTOS
+const base = document.createElement('div'); base.id = 'joystick-base';
+const stick = document.createElement('div'); stick.id = 'joystick-stick';
+const touchZone = document.createElement('div'); touchZone.id = 'touch-zone';
+base.appendChild(stick);
+document.body.appendChild(base);
+document.body.appendChild(touchZone);
+
+// VARIÁVEIS DE MOVIMENTO
+let joyPos = { x: 0, y: 0 }, isJoyDown = false;
+let moveX = 0, moveZ = 0;
+let lastTouchX = 0;
+
+// 4. LÓGICA DO JOYSTICK
+base.addEventListener('touchstart', (e) => { isJoyDown = true; e.stopPropagation(); });
+window.addEventListener('touchmove', (e) => {
+    if (!isJoyDown) return;
+    let touch = e.touches[0];
+    let rect = base.getBoundingClientRect();
+    let centerX = rect.left + rect.width / 2;
+    let centerY = rect.top + rect.height / 2;
+    let dx = touch.clientX - centerX;
+    let dy = touch.clientY - centerY;
+    let dist = Math.min(Math.sqrt(dx*dx + dy*dy), 50);
+    let angle = Math.atan2(dy, dx);
+    joyPos.x = Math.cos(angle) * dist;
+    joyPos.y = Math.sin(angle) * dist;
+    stick.style.transform = `translate(${joyPos.x}px, ${joyPos.y}px)`;
+    moveX = (joyPos.x / 50);
+    moveZ = (joyPos.y / 50);
+}, { passive: false });
+
+window.addEventListener('touchend', () => {
+    isJoyDown = false;
+    stick.style.transform = `translate(0px, 0px)`;
+    moveX = 0; moveZ = 0;
+});
+
+// 5. LÓGICA DA CÂMERA (Ajustada para não bloquear os botões)
+touchZone.addEventListener('touchstart', (e) => {
+    // Se o toque for em um botão ou painel, não gira a câmera
+    if(e.target.tagName === 'BUTTON' || e.target.closest('.panel')) return;
+    lastTouchX = e.touches[0].clientX;
+});
+
+touchZone.addEventListener('touchmove', (e) => {
+    if(e.target.tagName === 'BUTTON' || e.target.closest('.panel')) return;
+    let touch = e.touches[0];
+    let deltaX = touch.clientX - lastTouchX;
+    camRot -= deltaX * 0.007; 
+    lastTouchX = touch.clientX;
+});
+
+// 6. LOOP DE MOVIMENTO (Sem alterar o motor original)
+if(window.mpInterval) clearInterval(window.mpInterval);
+window.mpInterval = setInterval(() => {
+    if (player && (moveX !== 0 || moveZ !== 0)) {
+        let f = new THREE.Vector3(Math.sin(camRot), 0, Math.cos(camRot));
+        let r = new THREE.Vector3().crossVectors(new THREE.Vector3(0,1,0), f);
+        player.position.addScaledVector(f, -moveZ * moveSpeed);
+        player.position.addScaledVector(r, -moveX * moveSpeed);
+        let rotBase = Math.atan2(moveX, moveZ) + camRot + Math.PI;
+        player.rotation.y = (typeof animInverted !== 'undefined' && animInverted) ? rotBase + Math.PI : rotBase;
+        if (typeof fadeToAction === "function") fadeToAction('walk');
+    } else {
+        if (typeof fadeToAction === "function") fadeToAction('idle');
+    }
+}, 16);
+
+alert("Controles Mobile Otimizados! Menus agora estão clicáveis.");
