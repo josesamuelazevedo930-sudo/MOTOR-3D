@@ -1,0 +1,104 @@
+// 1. REMOVER INTERFACE ANTIGA
+if(document.getElementById('ui-multi')) document.getElementById('ui-multi').remove();
+
+// 2. CARREGAR FIREBASE (A tecnologia mais aceita em TVs)
+const script = document.createElement('script');
+script.src = "https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js";
+const script2 = document.createElement('script');
+script2.src = "https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js";
+document.head.appendChild(script);
+document.head.appendChild(script2);
+
+script2.onload = () => {
+    // CONFIGURAÇÃO DE UM SERVIDOR PÚBLICO TEMPORÁRIO
+    const firebaseConfig = {
+        databaseURL: "https://multiplayer-teste-default-rtdb.firebaseio.com/"
+    };
+    if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    // 3. INTERFACE
+    const uiMulti = document.createElement('div');
+    uiMulti.id = 'ui-multi';
+    uiMulti.style.cssText = "position:absolute; top:10px; left:10px; z-index:10000; font-family:sans-serif; background:rgba(0,0,0,0.9); padding:10px; border-radius:10px; border:2px solid #fff; color:white; width:200px;";
+    uiMulti.innerHTML = `
+        <b>SIRI MULTI-TV</b><br>
+        <input type="text" id="room-name" placeholder="Sala (ex: 123)" style="width:90%; margin:5px 0;">
+        <button id="btn-con" style="width:100%; padding:8px; background:green; color:white; border:none;">CONECTAR</button>
+        <div id="chat-box" style="display:none; margin-top:10px;">
+            <div id="logs" style="height:50px; overflow:auto; font-size:10px; background:#111;"></div>
+            <input type="text" id="msg" placeholder="Oi" style="width:70%;">
+            <button id="btn-msg">OK</button>
+        </div>
+    `;
+    document.body.appendChild(uiMulti);
+
+    let myID = "P" + Math.floor(Math.random() * 999);
+    let sala = "";
+    let players = {};
+
+    document.getElementById('btn-con').onclick = () => {
+        sala = document.getElementById('room-name').value;
+        if(!sala) return alert("Diga a sala!");
+
+        document.getElementById('chat-box').style.display = 'block';
+        document.getElementById('btn-con').innerText = "CONECTADO";
+
+        // ESCUTAR MOVIMENTOS
+        db.ref('salas/' + sala).on('value', (snapshot) => {
+            const data = snapshot.val();
+            if(!data) return;
+            for(let id in data) {
+                if(id !== myID) {
+                    if(data[id].type === 'move') atualizarPlayer(id, data[id]);
+                    if(data[id].type === 'chat') addChat(id, data[id].text);
+                }
+            }
+        });
+
+        // ENVIAR MEU MOVIMENTO
+        setInterval(() => {
+            if(window.player) {
+                db.ref('salas/' + sala + '/' + myID).set({
+                    type: 'move',
+                    x: player.position.x,
+                    y: player.position.y,
+                    z: player.position.z,
+                    ry: player.rotation.y,
+                    skin: window.currentSkinUrl || ""
+                });
+            }
+        }, 200); // 200ms para ser bem leve na TV
+    };
+
+    function atualizarPlayer(id, data) {
+        if(!players[id]) {
+            // Cria um cubo se a TV não carregar o boneco
+            const g = new THREE.BoxGeometry(2, 5, 2);
+            players[id] = new THREE.Mesh(g, new THREE.MeshBasicMaterial({color: 0xff0000}));
+            scene.add(players[id]);
+            
+            if(window.loaderGLTF && data.skin) {
+                loaderGLTF.load(data.skin, (gltf) => {
+                    scene.remove(players[id]);
+                    players[id] = gltf.scene;
+                    scene.add(players[id]);
+                });
+            }
+        }
+        players[id].position.set(data.x, data.y, data.z);
+        players[id].rotation.y = data.ry;
+    }
+
+    function addChat(id, text) {
+        const l = document.getElementById('logs');
+        l.innerHTML += `<div>${id}: ${text}</div>`;
+        l.scrollTop = l.scrollHeight;
+    }
+
+    document.getElementById('btn-msg').onclick = () => {
+        const t = document.getElementById('msg').value;
+        db.ref('salas/' + sala + '/' + myID).update({type: 'chat', text: t});
+        document.getElementById('msg').value = "";
+    };
+};
