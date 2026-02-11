@@ -1,16 +1,32 @@
-// 1. ESCONDER CONTROLES DE PC (Opcional, se houver sobreposição)
-// O motor original já tem botões, mas vamos focar em adicionar o Joystick
+// 1. LIMPAR CONTROLES ANTIGOS (Evita duplicar se você executar o script de novo)
+if(document.getElementById('joystick-base')) document.getElementById('joystick-base').remove();
+if(document.getElementById('touch-zone')) document.getElementById('touch-zone').remove();
 
-// 2. CRIAR ESTILOS DO JOYSTICK
+// 2. ESTILOS COM "POINTER-EVENTS" INTELIGENTE
 const style = document.createElement('style');
+style.id = "mobile-style";
 style.innerHTML = `
-    #joystick-base { position: absolute; bottom: 50px; left: 50px; width: 120px; height: 120px; background: rgba(255,255,255,0.2); border: 2px solid #fff; border-radius: 50%; z-index: 1000; touch-action: none; }
-    #joystick-stick { position: absolute; top: 35px; left: 35px; width: 50px; height: 50px; background: #fff; border-radius: 50%; }
-    #touch-zone { position: absolute; top: 0; right: 0; width: 50%; height: 100%; z-index: 998; touch-action: none; }
+    #joystick-base { 
+        position: absolute; bottom: 50px; left: 50px; width: 120px; height: 120px; 
+        background: rgba(255,255,255,0.1); border: 2px solid rgba(255,255,255,0.4); 
+        border-radius: 50%; z-index: 10; touch-action: none; 
+    }
+    #joystick-stick { 
+        position: absolute; top: 35px; left: 35px; width: 50px; height: 50px; 
+        background: rgba(255,255,255,0.8); border-radius: 50%; 
+    }
+    #touch-zone { 
+        position: absolute; top: 0; right: 0; width: 60%; height: 100%; 
+        z-index: 5; touch-action: none; 
+        /* Isso permite que cliques passem para os botões se eles estiverem embaixo */
+        pointer-events: auto; 
+    }
+    /* Garantir que os botões originais fiquem SEMPRE na frente de tudo */
+    .ui-btn, .panel, .zoom-ctrl { z-index: 9999 !important; }
 `;
 document.head.appendChild(style);
 
-// 3. CRIAR ELEMENTOS VISUAIS
+// 3. CRIAR ELEMENTOS
 const base = document.createElement('div'); base.id = 'joystick-base';
 const stick = document.createElement('div'); stick.id = 'joystick-stick';
 const touchZone = document.createElement('div'); touchZone.id = 'touch-zone';
@@ -18,34 +34,29 @@ base.appendChild(stick);
 document.body.appendChild(base);
 document.body.appendChild(touchZone);
 
-// VARIÁVEIS DE CONTROLE
+// VARIÁVEIS DE MOVIMENTO
 let joyPos = { x: 0, y: 0 }, isJoyDown = false;
 let moveX = 0, moveZ = 0;
-let lastTouchX = 0, lastTouchY = 0;
+let lastTouchX = 0;
 
-// 4. LÓGICA DO JOYSTICK (MOVIMENTAÇÃO)
-base.addEventListener('touchstart', (e) => { isJoyDown = true; });
+// 4. LÓGICA DO JOYSTICK
+base.addEventListener('touchstart', (e) => { isJoyDown = true; e.stopPropagation(); });
 window.addEventListener('touchmove', (e) => {
     if (!isJoyDown) return;
     let touch = e.touches[0];
     let rect = base.getBoundingClientRect();
     let centerX = rect.left + rect.width / 2;
     let centerY = rect.top + rect.height / 2;
-    
     let dx = touch.clientX - centerX;
     let dy = touch.clientY - centerY;
     let dist = Math.min(Math.sqrt(dx*dx + dy*dy), 50);
     let angle = Math.atan2(dy, dx);
-
     joyPos.x = Math.cos(angle) * dist;
     joyPos.y = Math.sin(angle) * dist;
-
     stick.style.transform = `translate(${joyPos.x}px, ${joyPos.y}px)`;
-
-    // Normalizar para movimento do motor
     moveX = (joyPos.x / 50);
     moveZ = (joyPos.y / 50);
-});
+}, { passive: false });
 
 window.addEventListener('touchend', () => {
     isJoyDown = false;
@@ -53,39 +64,36 @@ window.addEventListener('touchend', () => {
     moveX = 0; moveZ = 0;
 });
 
-// 5. LÓGICA DE SWIPE (CÂMERA)
+// 5. LÓGICA DA CÂMERA (Ajustada para não bloquear os botões)
 touchZone.addEventListener('touchstart', (e) => {
+    // Se o toque for em um botão ou painel, não gira a câmera
+    if(e.target.tagName === 'BUTTON' || e.target.closest('.panel')) return;
     lastTouchX = e.touches[0].clientX;
 });
 
 touchZone.addEventListener('touchmove', (e) => {
+    if(e.target.tagName === 'BUTTON' || e.target.closest('.panel')) return;
     let touch = e.touches[0];
     let deltaX = touch.clientX - lastTouchX;
-    camRot -= deltaX * 0.005; // Gira a câmera global do seu motor
+    camRot -= deltaX * 0.007; 
     lastTouchX = touch.clientX;
 });
 
-// 6. INJETAR NO LOOP DE ANIMAÇÃO DO MOTOR
-// Sobrescrevemos a lógica de teclado usando as variáveis do joystick
-function updateMobileMovement() {
+// 6. LOOP DE MOVIMENTO (Sem alterar o motor original)
+if(window.mpInterval) clearInterval(window.mpInterval);
+window.mpInterval = setInterval(() => {
     if (player && (moveX !== 0 || moveZ !== 0)) {
         let f = new THREE.Vector3(Math.sin(camRot), 0, Math.cos(camRot));
         let r = new THREE.Vector3().crossVectors(new THREE.Vector3(0,1,0), f);
-        
-        // moveZ é frente/atrás, moveX é esquerda/direita
         player.position.addScaledVector(f, -moveZ * moveSpeed);
         player.position.addScaledVector(r, -moveX * moveSpeed);
-        
         let rotBase = Math.atan2(moveX, moveZ) + camRot + Math.PI;
-        player.rotation.y = animInverted ? rotBase + Math.PI : rotBase;
-        
+        player.rotation.y = (typeof animInverted !== 'undefined' && animInverted) ? rotBase + Math.PI : rotBase;
         if (typeof fadeToAction === "function") fadeToAction('walk');
     } else {
         if (typeof fadeToAction === "function") fadeToAction('idle');
     }
-}
+}, 16);
 
-// Rodar a atualização junto com o renderizador
-setInterval(updateMobileMovement, 16);
+alert("Controles Mobile Otimizados! Menus agora estão clicáveis.");
 
-alert("Controles Mobile Ativados! Use o lado esquerdo para andar e o direito para girar a câmera.");
