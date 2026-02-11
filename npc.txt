@@ -1,0 +1,107 @@
+(function() {
+    // 1. Configurações do NPC
+    const modelURL = "https://cdn.jsdelivr.net/gh/josesamuelazevedo930-sudo/MOTOR-3D@main/soldado.glb"; // Ajuste o nome se necessário
+    let npc, npcMixer, npcIdle, npcWalk;
+    let targetPos = new THREE.Vector3();
+    let moveSpeed = 0.3;
+    let isMoving = false;
+
+    // 2. Sistema de Mensagens (Chat Roblox)
+    const chatBubble = document.createElement('div');
+    chatBubble.style = "position:absolute; background:white; color:black; padding:5px 10px; border-radius:10px; border:2px solid #000; font-family:sans-serif; font-weight:bold; font-size:12px; display:none; pointer-events:none; white-space:nowrap; z-index:10000;";
+    document.body.appendChild(chatBubble);
+
+    const frases = ["Patrulhando o Siri Cascudo!", "Avante soldados!", "Nada suspeito por aqui...", "Alguém viu o Bob Esponja?", "Sentido!"];
+
+    // 3. Indicador de Posição (Seta/Marcador)
+    const indicator = document.createElement('div');
+    indicator.style = "position:absolute; width:10px; height:10px; background:red; border-radius:50%; border:2px solid white; z-index:9999;";
+    document.body.appendChild(indicator);
+
+    // 4. Carregar o Modelo
+    loaderGLTF.load(modelURL, (gltf) => {
+        npc = gltf.scene;
+        npc.scale.set(8, 8, 8);
+        npc.position.set(20, 10, 20); // Posição inicial
+        scene.add(npc);
+
+        npcMixer = new THREE.AnimationMixer(npc);
+        if (gltf.animations.length > 0) {
+            npcIdle = npcMixer.clipAction(gltf.animations[0]);
+            npcWalk = npcMixer.clipAction(gltf.animations[1] || gltf.animations[0]);
+            npcIdle.play();
+        }
+
+        iniciarIA();
+    });
+
+    function iniciarIA() {
+        setInterval(() => {
+            if (!isMoving) {
+                // Define um novo destino aleatório perto de onde ele está
+                targetPos.set(npc.position.x + (Math.random() * 60 - 30), npc.position.y, npc.position.z + (Math.random() * 60 - 30));
+                isMoving = true;
+                if (npcWalk) { npcIdle.stop(); npcWalk.play(); }
+            }
+            
+            // Chance de falar algo
+            if (Math.random() > 0.7) mostrarMensagem();
+        }, 5000);
+    }
+
+    function mostrarMensagem() {
+        chatBubble.innerText = frases[Math.floor(Math.random() * frases.length)];
+        chatBubble.style.display = "block";
+        setTimeout(() => { chatBubble.style.display = "none"; }, 3000);
+    }
+
+    // 5. Loop de Inteligência e Física
+    const raycaster = new THREE.Raycaster();
+    const downVec = new THREE.Vector3(0, -1, 0);
+
+    const oldAnimate = window.animate;
+    window.animate = function() {
+        if (npc) {
+            // A. Gravidade e Chão Inteligente
+            raycaster.set(new THREE.Vector3(npc.position.x, npc.position.y + 10, npc.position.z), downVec);
+            const groundHits = raycaster.intersectObject(mapModel, true);
+            if (groundHits.length > 0) {
+                npc.position.y = groundHits[0].point.y; // Mantém no chão
+            }
+
+            // B. Movimentação para o Alvo
+            if (isMoving) {
+                npc.lookAt(targetPos.x, npc.position.y, targetPos.z);
+                npc.translateZ(moveSpeed);
+                
+                if (npc.position.distanceTo(new THREE.Vector3(targetPos.x, npc.position.y, targetPos.z)) < 2) {
+                    isMoving = false;
+                    if (npcIdle) { npcWalk.stop(); npcIdle.play(); }
+                }
+            }
+
+            // C. Anti-Queda (Respawn)
+            if (npc.position.y < -50) {
+                npc.position.set(0, 20, 0);
+                console.log("NPC resgatado do limbo!");
+            }
+
+            // D. Atualizar GUI (Mensagem e Indicador)
+            const screenPos = npc.position.clone().project(camera);
+            const x = (screenPos.x * 0.5 + 0.5) * window.innerWidth;
+            const y = (screenPos.y * -0.5 + 0.5) * window.innerHeight;
+
+            if (screenPos.z < 1) { // Só mostra se estiver na frente da câmera
+                chatBubble.style.left = x + "px";
+                chatBubble.style.top = (y - 120) + "px";
+                indicator.style.left = x + "px";
+                indicator.style.top = (y - 10) + "px";
+                indicator.style.display = "block";
+            } else {
+                chatBubble.style.display = "none";
+                indicator.style.display = "none";
+            }
+        }
+        oldAnimate();
+    };
+})();
