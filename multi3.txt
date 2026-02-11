@@ -1,0 +1,106 @@
+// 1. CARREGAR BIBLIOTECA ULTRA-COMPATÍVEL (PUBNUB)
+if(document.getElementById('ui-multi')) document.getElementById('ui-multi').remove();
+const pnScript = document.createElement('script');
+pnScript.src = "https://cdn.pubnub.com/sdk/javascript/pubnub.7.2.2.min.js";
+document.head.appendChild(pnScript);
+
+pnScript.onload = () => {
+    // 2. INTERFACE DE CONEXÃO
+    const uiMulti = document.createElement('div');
+    uiMulti.id = 'ui-multi';
+    uiMulti.style.cssText = "position:absolute; top:10px; left:10px; z-index:10000; font-family:sans-serif; background:rgba(0,0,0,0.9); padding:12px; border-radius:10px; border:2px solid #00ffff; color:white; width:210px;";
+    uiMulti.innerHTML = `
+        <b style="color:#00ffff;">SIRI CONNECT TV</b><br>
+        <small id="net-status">Pronto para conectar</small><br>
+        <input type="text" id="room-id" placeholder="Nome da Sala" style="width:90%; margin:8px 0; padding:5px; background:#222; color:#fff; border:1px solid #444;">
+        <button id="btn-join" style="width:100%; padding:10px; background:#28a745; color:white; border:none; border-radius:5px; font-weight:bold;">ENTRAR NO JOGO</button>
+        
+        <div id="chat-area" style="display:none; margin-top:10px;">
+            <div id="chat-logs" style="height:70px; overflow-y:auto; font-size:11px; background:#111; padding:5px; border:1px solid #333; margin-bottom:5px;"></div>
+            <div style="display:flex; gap:2px;">
+                <input type="text" id="chat-input" placeholder="Chat..." style="flex:1; background:#222; color:white; border:1px solid #444; font-size:12px;">
+                <button id="btn-send" style="background:#007bff; color:white; border:none; padding:5px;">OK</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(uiMulti);
+
+    let pubnub, canal;
+    let remotePlayers = {};
+    let myNick = "Player_" + Math.floor(Math.random() * 999);
+
+    document.getElementById('btn-join').onclick = () => {
+        canal = document.getElementById('room-id').value.trim();
+        if(!canal) return alert("Digite o nome da sala!");
+
+        // Inicializa o serviço de rede (Chaves públicas de teste)
+        pubnub = new PubNub({
+            publishKey: 'pub-c-46132915-d91d-4007-8894-39f50e828e3b',
+            subscribeKey: 'sub-c-57270e51-9653-487b-967b-1d7390918076',
+            uuid: myNick
+        });
+
+        pubnub.subscribe({ channels: [canal] });
+
+        pubnub.addListener({
+            message: (m) => {
+                if(m.publisher !== myNick) {
+                    if(m.message.type === 'sync') atualizarOutro(m.publisher, m.message);
+                    if(m.message.type === 'chat') addLog(m.publisher, m.message.msg);
+                }
+            }
+        });
+
+        document.getElementById('net-status').innerText = "Conectado: " + canal;
+        document.getElementById('chat-area').style.display = 'block';
+        document.getElementById('room-id').style.display = 'none';
+        document.getElementById('btn-join').style.display = 'none';
+
+        // Loop de envio (Otimizado para TV - 150ms)
+        setInterval(() => {
+            pubnub.publish({
+                channel: canal,
+                message: {
+                    type: 'sync',
+                    x: player.position.x, y: player.position.y, z: player.position.z,
+                    ry: player.rotation.y, skin: window.currentSkinUrl
+                }
+            });
+        }, 150);
+    };
+
+    function atualizarOutro(id, data) {
+        if(!remotePlayers[id]) {
+            // Cria um boneco simples primeiro para não dar lag
+            const geo = new THREE.BoxGeometry(2, 5, 2);
+            remotePlayers[id] = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({color: 0x00ffff}));
+            scene.add(remotePlayers[id]);
+            
+            // Tenta carregar a Skin GLB real
+            if(window.loaderGLTF && data.skin) {
+                loaderGLTF.load(data.skin, (gltf) => {
+                    scene.remove(remotePlayers[id]);
+                    remotePlayers[id] = gltf.scene;
+                    scene.add(remotePlayers[id]);
+                });
+            }
+        }
+        remotePlayers[id].position.set(data.x, data.y, data.z);
+        remotePlayers[id].rotation.y = data.ry;
+    }
+
+    function addLog(nick, msg) {
+        const logs = document.getElementById('chat-logs');
+        logs.innerHTML += `<div><b>${nick.substring(0,5)}:</b> ${msg}</div>`;
+        logs.scrollTop = logs.scrollHeight;
+    }
+
+    document.getElementById('btn-send').onclick = () => {
+        let inp = document.getElementById('chat-input');
+        if(inp.value) {
+            pubnub.publish({ channel: canal, message: { type: 'chat', msg: inp.value } });
+            addLog("Eu", inp.value);
+            inp.value = "";
+        }
+    };
+};
