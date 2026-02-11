@@ -1,0 +1,70 @@
+(function() {
+    // 1. Tag de Status
+    const tag = document.createElement('div');
+    tag.style = "position:absolute; top:70px; left:50%; transform:translateX(-50%); background:#e60073; color:white; padding:4px 12px; border-radius:10px; z-index:10007; font-size:10px; font-weight:bold; border:1px solid #fff; box-shadow: 0 0 10px #ff0080;";
+    tag.innerText = "FORÇAR APARECER: MODO AGRESSIVO";
+    document.body.appendChild(tag);
+
+    window.loadModel = function(url) {
+        document.getElementById('loader').style.display = 'block';
+        document.getElementById('loader').innerText = "FORÇANDO TEXTURAS NA V-RAM...";
+
+        // Limpeza rápida para dar espaço
+        if (player) { scene.remove(player); }
+
+        loaderGLTF.load(url, (gltf) => {
+            player = gltf.scene;
+
+            player.traverse(node => {
+                if (node.isMesh) {
+                    // FORÇAR VISIBILIDADE
+                    node.visible = true;
+                    node.frustumCulled = false; // Não deixa a TV esconder o modelo se a câmera girar rápido
+
+                    if (node.material) {
+                        const materials = Array.isArray(node.material) ? node.material : [node.material];
+                        materials.forEach(mat => {
+                            mat.transparent = false; // Desativar transparência desnecessária ajuda a TV a renderizar mais rápido
+                            mat.opacity = 1.0;
+                            mat.side = THREE.DoubleSide; // Força aparecer frente e verso da textura
+                            
+                            if (mat.map) {
+                                // MANTÉM A TEXTURA E FORÇA O UPLOAD
+                                mat.map.anisotropy = 1; // Simplifica o filtro para a TV não cansar
+                                mat.map.needsUpdate = true; // Obriga a TV a reler a imagem agora
+                            }
+                            
+                            mat.needsUpdate = true;
+                        });
+                    }
+                }
+            });
+
+            // Escala e Posição
+            player.position.set(0, 50, 0);
+            let box = new THREE.Box3().setFromObject(player);
+            let size = box.getSize(new THREE.Vector3()).y || 1;
+            let s = 8 / size;
+            player.scale.set(s, s, s);
+
+            scene.add(player);
+
+            // Forçar o renderizador a desenhar a skin IMEDIATAMENTE
+            renderer.compile(scene, camera);
+
+            // Setup de Animação
+            mixer = new THREE.AnimationMixer(player);
+            if (gltf.animations.length > 0) {
+                idleAction = mixer.clipAction(gltf.animations.find(a => a.name.toLowerCase().match(/idle|static/)) || gltf.animations[0]);
+                walkAction = mixer.clipAction(gltf.animations.find(a => a.name.toLowerCase().match(/run|walk|move/)) || gltf.animations[gltf.animations.length-1]);
+                activeAction = idleAction; 
+                activeAction.play();
+            }
+
+            document.getElementById('loader').style.display = 'none';
+        }, (xhr) => {
+            let p = Math.round((xhr.loaded / (xhr.total || 1)) * 100);
+            document.getElementById('loader').innerText = "FORÇANDO: " + p + "%";
+        });
+    };
+})();
