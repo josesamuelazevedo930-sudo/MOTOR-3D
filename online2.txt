@@ -1,0 +1,144 @@
+// 1. GARANTIR PEERJS
+if (!window.Peer) {
+    let s = document.createElement('script');
+    s.src = "https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js";
+    document.head.appendChild(s);
+}
+
+// 2. INTERFACE MELHORADA
+if(document.getElementById('ui-multi')) document.getElementById('ui-multi').remove();
+const uiMulti = document.createElement('div');
+uiMulti.id = 'ui-multi';
+uiMulti.style.cssText = "position:absolute; top:10px; left:10px; background:rgba(0,0,0,0.9); padding:12px; color:white; border-radius:8px; z-index:10000; font-family:sans-serif; border:1px solid #00ffff; width:200px;";
+uiMulti.innerHTML = `
+    <div id="setup-mp">
+        <b style="color:#00ffff">SIRI ONLINE</b><br>
+        <small>Meu ID: <span id="my-id">Carregando...</span></small><br>
+        <input type="text" id="nick" placeholder="Seu Nick" style="width:90%; margin-top:5px; padding:5px; background:#222; color:#fff; border:1px solid #444;">
+        <input type="text" id="target-id" placeholder="ID do Amigo" style="width:90%; margin-top:5px; padding:5px; background:#222; color:#fff; border:1px solid #444;">
+        <button id="btn-con" style="width:100%; margin-top:8px; background:#28a745; color:white; border:none; padding:8px; border-radius:4px; font-weight:bold;">CONECTAR</button>
+    </div>
+    <div id="chat-box" style="display:none; margin-top:10px;">
+        <div id="chat-logs" style="height:100px; overflow-y:auto; font-size:11px; background:#111; padding:5px; border:1px solid #333; margin-bottom:5px;"></div>
+        <div style="display:flex; gap:2px;">
+            <input type="text" id="chat-input" placeholder="Mensagem..." style="flex:1; background:#222; color:#fff; border:1px solid #444; padding:5px;">
+            <button id="btn-send" style="background:#007bff; color:white; border:none; padding:5px; border-radius:4px;">Enviar</button>
+        </div>
+    </div>
+`;
+document.body.appendChild(uiMulti);
+
+let peer, conn, remotePlayer, remoteLabel, myLabel;
+let myNick = "Player";
+let currentSkin = ""; let currentMap = "";
+
+// 3. NICK EM CIMA DO MEU JOGADOR (Para teste)
+function updateMyLabel(name) {
+    if(myLabel) scene.remove(myLabel);
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    canvas.width = 256; canvas.height = 128;
+    ctx.font = 'Bold 40px Arial'; ctx.fillStyle = '#00ffff'; ctx.textAlign = 'center';
+    ctx.fillText(name, 128, 64);
+    const tex = new THREE.CanvasTexture(canvas);
+    myLabel = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex }));
+    myLabel.scale.set(10, 5, 1);
+    scene.add(myLabel);
+}
+
+// 4. LÓGICA DE REDE
+setTimeout(() => {
+    peer = new Peer();
+    peer.on('open', id => document.getElementById('my-id').innerText = id);
+    peer.on('connection', c => { conn = c; initNetwork(); });
+
+    document.getElementById('btn-con').onclick = () => {
+        myNick = document.getElementById('nick').value || "Player";
+        updateMyLabel(myNick); // Já mostra seu nick pra você
+        let tid = document.getElementById('target-id').value;
+        if(tid) { conn = peer.connect(tid); initNetwork(); }
+    };
+}, 1500);
+
+function initNetwork() {
+    document.getElementById('setup-mp').style.display = 'none';
+    document.getElementById('chat-box').style.display = 'block';
+
+    const sendMsg = () => {
+        let input = document.getElementById('chat-input');
+        if(input.value.trim() !== "" && conn && conn.open) {
+            conn.send({ type: 'chat', msg: input.value, nick: myNick });
+            addChatLog(myNick, input.value);
+            input.value = "";
+        }
+    };
+
+    document.getElementById('btn-send').onclick = sendMsg;
+    document.getElementById('chat-input').onkeydown = (e) => { if(e.key === 'Enter') sendMsg(); };
+
+    conn.on('open', () => {
+        alert("Sincronizado!");
+        setInterval(() => {
+            if(conn.open) {
+                conn.send({
+                    type: 'sync', nick: myNick,
+                    x: player.position.x, y: player.position.y, z: player.position.z,
+                    ry: player.rotation.y, skin: currentSkin, map: currentMap
+                });
+            }
+        }, 50);
+    });
+
+    conn.on('data', data => {
+        if(data.type === 'sync') handleSync(data);
+        if(data.type === 'chat') handleChat(data);
+    });
+}
+
+function handleSync(data) {
+    if(!remotePlayer || data.skin !== remoteSkinUrl) {
+        if(remotePlayer) scene.remove(remotePlayer);
+        remoteSkinUrl = data.skin;
+        loaderGLTF.load(data.skin || defaultSkins[0].u, (gltf) => {
+            remotePlayer = gltf.scene; scene.add(remotePlayer);
+            createRemoteLabel(data.nick);
+        });
+    }
+    if(remotePlayer) {
+        remotePlayer.position.set(data.x, data.y, data.z);
+        remotePlayer.rotation.y = data.ry;
+        if(remoteLabel) {
+            remoteLabel.position.set(data.x, data.y + 12, data.z);
+            remoteLabel.lookAt(camera.position);
+        }
+    }
+}
+
+function handleChat(data) { addChatLog(data.nick, data.msg); }
+
+function addChatLog(nick, msg) {
+    const log = document.getElementById('chat-logs');
+    log.innerHTML += `<div><b style="color:#00ffff">${nick}:</b> ${msg}</div>`;
+    log.scrollTop = log.scrollHeight;
+}
+
+function createRemoteLabel(text) {
+    if(remoteLabel) scene.remove(remoteLabel);
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    canvas.width = 256; canvas.height = 128;
+    ctx.font = 'Bold 40px Arial'; ctx.fillStyle = 'white'; ctx.textAlign = 'center';
+    ctx.fillText(text, 128, 64);
+    const tex = new THREE.CanvasTexture(canvas);
+    remoteLabel = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex }));
+    remoteLabel.scale.set(10, 5, 1);
+    scene.add(remoteLabel);
+}
+
+// Manter seu nick seguindo você
+setInterval(() => {
+    if(myLabel && player) {
+        myLabel.position.set(player.position.x, player.position.y + 12, player.position.z);
+        myLabel.lookAt(camera.position);
+    }
+}, 16);
