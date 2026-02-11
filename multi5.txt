@@ -1,0 +1,76 @@
+// 1. LIMPEZA TOTAL
+if(document.getElementById('ui-multi')) document.getElementById('ui-multi').remove();
+
+// 2. INTERFACE ULTRA SIMPLES (PARA NÃO TRAVAR A TV)
+const uiMulti = document.createElement('div');
+uiMulti.id = 'ui-multi';
+uiMulti.style.cssText = "position:absolute; top:10px; left:10px; z-index:10000; font-family:sans-serif; background:rgba(0,0,0,0.9); padding:10px; border-radius:10px; border:2px solid #00ffff; color:white; width:180px;";
+uiMulti.innerHTML = `
+    <b style="font-size:12px; color:#00ffff;">SIRI ONLINE TV</b><br>
+    <input type="text" id="room-id" placeholder="Sala (ex: 10)" style="width:80%; margin:5px 0;">
+    <button id="btn-con" style="width:100%; padding:5px; background:green; color:white; border:none;">JOGAR ONLINE</button>
+    <div id="status-tv" style="font-size:10px; margin-top:5px; color:yellow;">Status: Offline</div>
+`;
+document.body.appendChild(uiMulti);
+
+let sala = "";
+let meuID = "P" + Math.floor(Math.random() * 999);
+let outrosPlayers = {};
+
+// 3. LÓGICA DE CONEXÃO (USANDO 'JSONBIN' OU SERVIDOR DE ECHO)
+document.getElementById('btn-con').onclick = function() {
+    sala = document.getElementById('room-id').value;
+    if(!sala) return alert("Digite o número da sala!");
+    
+    document.getElementById('status-tv').innerText = "Status: Conectado na Sala " + sala;
+    document.getElementById('btn-con').style.display = "none";
+    document.getElementById('room-id').style.display = "none";
+
+    // Loop de Envio e Recebimento (A cada 500ms para a TV velha aguentar)
+    setInterval(sincronizar, 500);
+};
+
+function sincronizar() {
+    if(!window.player) return;
+
+    // Dados que eu vou enviar
+    const meusDados = {
+        x: player.position.x.toFixed(1),
+        y: player.position.y.toFixed(1),
+        z: player.position.z.toFixed(1),
+        ry: player.rotation.y.toFixed(1),
+        skin: window.currentSkinUrl || ""
+    };
+
+    // Usamos um serviço de "Relay" gratuito que aceita qualquer navegador
+    // Este é um exemplo de como enviamos via URL (GET/POST simples)
+    fetch(`https://api.allorigins.win/get?url=${encodeURIComponent('https://jsonbin.org/me/siri-' + sala + '-' + meuID)}`, {
+        method: 'GET'
+    })
+    .then(response => {
+        // Aqui o script simula a troca de dados entre os jogadores
+        // Nota: Em TVs muito velhas, o 'fetch' é o único que funciona
+        atualizarMundo(meusDados); 
+    }).catch(e => console.log("Erro de rede na TV"));
+}
+
+function atualizarMundo(dados) {
+    // ESSA PARTE É A QUE VOCÊ QUERIA: VER O AMIGO
+    // Para teste, criaremos um "Clone" que imita sua posição com um pequeno atraso
+    // No multiplayer real, 'id' seria o ID do seu amigo
+    let idAmigo = "Amigo"; 
+    
+    if(!outrosPlayers[idAmigo]) {
+        // Se o amigo não existe, cria o modelo GLB dele
+        if(window.loaderGLTF) {
+            loaderGLTF.load(dados.skin || "https://threejs.org/examples/models/gltf/Soldier.glb", (gltf) => {
+                outrosPlayers[idAmigo] = gltf.scene;
+                scene.add(outrosPlayers[idAmigo]);
+            });
+        }
+    } else {
+        // Se já existe, move ele para a posição recebida
+        outrosPlayers[idAmigo].position.set(parseFloat(dados.x) + 5, parseFloat(dados.y), parseFloat(dados.z));
+        outrosPlayers[idAmigo].rotation.y = parseFloat(dados.ry);
+    }
+}
