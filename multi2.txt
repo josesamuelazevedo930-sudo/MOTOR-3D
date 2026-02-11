@@ -1,0 +1,115 @@
+// 1. CARREGAMENTO REFORÇADO PARA NAVEGADORES ANTIGOS
+if(document.getElementById('ui-multi')) document.getElementById('ui-multi').remove();
+
+function iniciarScript() {
+    const uiMulti = document.createElement('div');
+    uiMulti.id = 'ui-multi';
+    uiMulti.style.cssText = "position:absolute; top:10px; left:10px; z-index:10000; font-family:sans-serif;";
+    uiMulti.innerHTML = `
+        <div id="panel-mp" style="background:rgba(0,0,0,0.95); padding:15px; color:white; border-radius:10px; border:2px solid #00ffff; width:220px;">
+            <b style="color:#00ffff;">SIRI TV-FIX V7</b><br>
+            <small id="status-net" style="color:yellow">Status: Aguardando...</small><br><br>
+            <input type="text" id="my-custom-id" placeholder="Nome da Sala" style="width:90%; padding:8px; margin-bottom:5px; background:#111; color:#fff; border:1px solid #444;">
+            <button id="btn-start-peer" style="width:100%; background:#007bff; color:white; border:none; padding:10px; border-radius:5px;">CRIAR SALA</button>
+            <hr style="border:0; border-top:1px solid #333; margin:10px 0;">
+            <input type="text" id="target-id" placeholder="ID do Amigo" style="width:90%; padding:8px; margin-bottom:5px; background:#111; color:#fff; border:1px solid #444;">
+            <button id="btn-con" style="width:100%; background:#28a745; color:white; border:none; padding:10px; border-radius:5px;">ENTRAR NA SALA</button>
+        </div>
+        <button id="btn-toggle-chat" style="display:none; background:#007bff; color:white; border:none; padding:10px; border-radius:8px;">💬 CHAT</button>
+    `;
+    document.body.appendChild(uiMulti);
+
+    let peer, conn, remotePlayer;
+
+    // CONFIGURAÇÃO DE SERVIDOR PARA FURAR BLOQUEIO DE WI-FI
+    const peerConfig = {
+        config: {
+            'iceServers': [
+                { url: 'stun:stun.l.google.com:19302' },
+                { url: 'stun:stun1.l.google.com:19302' }
+            ]
+        },
+        debug: 3
+    };
+
+    document.getElementById('btn-start-peer').onclick = () => {
+        let cid = document.getElementById('my-custom-id').value.trim();
+        if(!cid) return alert("Digite um nome!");
+        
+        peer = new Peer(cid, peerConfig);
+        
+        peer.on('open', (id) => {
+            document.getElementById('status-net').innerText = "ONLINE: " + id;
+            document.getElementById('status-net').style.color = "#0f0";
+        });
+
+        peer.on('connection', (c) => {
+            conn = c;
+            conectarEventos();
+        });
+
+        peer.on('error', (err) => {
+            document.getElementById('status-net').innerText = "ERRO: " + err.type;
+            console.error(err);
+        });
+    };
+
+    document.getElementById('btn-con').onclick = () => {
+        let tid = document.getElementById('target-id').value.trim();
+        if(!peer) peer = new Peer(peerConfig);
+        conn = peer.connect(tid);
+        document.getElementById('status-net').innerText = "Tentando conectar...";
+        conectarEventos();
+    };
+
+    function conectarEventos() {
+        conn.on('open', () => {
+            document.getElementById('panel-mp').style.display = 'none';
+            document.getElementById('btn-toggle-chat').style.display = 'block';
+            alert("CONECTADO!");
+            
+            setInterval(() => {
+                if(conn && conn.open) {
+                    conn.send({
+                        type: 'sync',
+                        x: player.position.x, y: player.position.y, z: player.position.z,
+                        ry: player.rotation.y, skin: window.currentSkinUrl
+                    });
+                }
+            }, 150); // Mais lento para não travar a TV
+        });
+
+        conn.on('data', (data) => {
+            if(data.type === 'sync') moverAmigo(data);
+        });
+    }
+
+    function moverAmigo(data) {
+        if(!remotePlayer) {
+            // Se o loader falhar na TV, cria um cubo pra não ficar sem nada
+            const geo = new THREE.BoxGeometry(2, 5, 2);
+            remotePlayer = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({color: 0x00ffff}));
+            scene.add(remotePlayer);
+            
+            if(typeof loaderGLTF !== 'undefined' && data.skin) {
+                loaderGLTF.load(data.skin, (gltf) => {
+                    scene.remove(remotePlayer);
+                    remotePlayer = gltf.scene;
+                    scene.add(remotePlayer);
+                });
+            }
+        }
+        remotePlayer.position.set(data.x, data.y, data.z);
+        remotePlayer.rotation.y = data.ry;
+    }
+}
+
+// TENTA CARREGAR A BIBLIOTECA DE FORMA MAIS SEGURA
+if (!window.Peer) {
+    let s = document.createElement('script');
+    s.src = "https://cdn.jsdelivr.net/npm/peerjs@1.4.7/dist/peerjs.min.js";
+    s.onload = iniciarScript;
+    document.head.appendChild(s);
+} else {
+    iniciarScript();
+}
