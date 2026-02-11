@@ -1,0 +1,45 @@
+(function() {
+    // 1. Configuração do link da música (Convertendo link do GitHub para link direto)
+    const urlOriginal = "https://github.com/josesamuelazevedo930-sudo/MP3/blob/main/SpongeBob%20Music%20__%20You_re%20Nice(MP3_160K).mp3";
+    const urlDireta = urlOriginal.replace("github.com", "raw.githubusercontent.com").replace("/blob/", "/");
+
+    // 2. Criar o elemento de áudio
+    if (window.bgAudio) { window.bgAudio.pause(); } // Para música anterior se existir
+    window.bgAudio = new Audio(urlDireta);
+    window.bgAudio.loop = true;
+    window.bgAudio.volume = 0.5;
+
+    // 3. Criar a GUI pequena no canto superior esquerdo
+    const player = document.createElement('div');
+    player.style = `
+        position: absolute; left: 10px; top: 10px; 
+        background: rgba(0, 0, 0, 0.8); border: 1px solid #ffcc00; 
+        border-radius: 20px; padding: 5px 15px; display: flex; 
+        align-items: center; gap: 10px; z-index: 10005;
+        box-shadow: 0 0 10px rgba(255, 204, 0, 0.3);
+    `;
+
+    player.innerHTML = `
+        <span style="color:#ffcc00; font-size:10px; font-weight:bold; font-family:sans-serif;">RADIO BIKINI</span>
+        <button id="p-play" style="background:#28a745; border:none; color:white; border-radius:50%; width:25px; height:25px; cursor:pointer; font-weight:bold;">▶</button>
+        <button id="p-pause" style="background:#ff3333; border:none; color:white; border-radius:50%; width:25px; height:25px; cursor:pointer; font-weight:bold;">II</button>
+        <input type="range" id="p-vol" min="0" max="1" step="0.1" value="0.5" style="width:50px; cursor:pointer;">
+    `;
+
+    document.body.appendChild(player);
+
+    // 4. Controles
+    document.getElementById('p-play').onclick = () => {
+        window.bgAudio.play().catch(e => alert("Toque na tela primeiro para ativar o som!"));
+    };
+    
+    document.getElementById('p-pause').onclick = () => {
+        window.bgAudio.pause();
+    };
+
+    document.getElementById('p-vol').oninput = (e) => {
+        window.bgAudio.volume = e.target.value;
+    };
+
+    console.log("Sistema de rádio carregado: " + urlDireta);
+})();
