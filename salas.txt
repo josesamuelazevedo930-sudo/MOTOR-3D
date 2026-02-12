@@ -1,0 +1,119 @@
+if(document.getElementById('ui-multi')) document.getElementById('ui-multi').remove();
+
+const mqttScript = document.createElement('script');
+mqttScript.src = 'https://cdn.jsdelivr.net/npm/mqtt@4.1.0/dist/mqtt.min.js';
+document.head.appendChild(mqttScript);
+
+mqttScript.onload = () => { setupV23(); };
+
+function setupV23() {
+    const ui = document.createElement('div');
+    ui.id = 'ui-multi';
+    ui.style.cssText = "position:absolute; top:10px; left:10px; z-index:10000; font-family:sans-serif; background:rgba(0,0,0,0.9); padding:12px; border-radius:10px; border:2px solid #00ffff; color:white; width:210px;";
+    ui.innerHTML = `
+        <b style="color:#00ffff;">SIRI V23 - ONLINE</b><br>
+        <div id="setup-mp">
+            <input id="mp-room" placeholder="Nº da Sala" style="width:90%; margin:5px 0; background:#222; color:white; border:1px solid #444; padding:5px;">
+            <button id="btn-con" style="width:100%; padding:8px; background:green; color:white; border:none; font-weight:bold;">CONECTAR E TELEPORTAR</button>
+        </div>
+        <div id="chat-area" style="display:none; margin-top:5px;">
+            <div id="st-render" style="font-size:10px; color:#ff0; margin-bottom:5px;">Buscando sinal do amigo...</div>
+            <div id="chat-logs" style="height:60px; overflow-y:auto; font-size:10px; background:#000; color:#0f0; padding:5px;"></div>
+        </div>
+    `;
+    document.body.appendChild(ui);
+
+    let client, sala, meuID = "TV-" + Math.floor(Math.random()*999);
+    let remotePlayers = {};
+    let teleportDone = false;
+    const SKIN_AMIGO = "https://threejs.org/examples/models/gltf/Soldier.glb";
+
+    document.getElementById('btn-con').onclick = () => {
+        sala = document.getElementById('mp-room').value || "1";
+        client = mqtt.connect('wss://broker.emqx.io:8084/mqtt', { clientId: meuID });
+
+        client.on('connect', () => {
+            document.getElementById('setup-mp').style.display = 'none';
+            document.getElementById('chat-area').style.display = 'block';
+            client.subscribe('siri/multi/' + sala);
+            addLog("SISTEMA", "Conectado!");
+        });
+
+        client.on('message', (topic, msg) => {
+            try {
+                const data = JSON.parse(msg.toString());
+                if (data.id !== meuID && data.type === 'sync') handleSync(data);
+            } catch (e) {}
+        });
+    };
+
+    function handleSync(data) {
+        // Usa as variáveis que eu vi no seu HTML
+        const targetScene = window.scene;
+        const myPlayer = window.player;
+
+        if (!targetScene) return;
+
+        // 1. TELEPORTE (Te leva até o amigo na primeira vez que ele fala)
+        if (!teleportDone && myPlayer) {
+            myPlayer.position.set(parseFloat(data.x), parseFloat(data.y) + 5, parseFloat(data.z));
+            teleportDone = true;
+            addLog("SISTEMA", "Teleportado para o amigo!");
+        }
+
+        // 2. CRIAÇÃO DO MODELO (SOLDADO)
+        if (!remotePlayers[data.id]) {
+            document.getElementById('st-render').innerText = "✅ Amigo encontrado!";
+            
+            // Cubo rosa choque de segurança
+            const geo = new THREE.BoxGeometry(4, 8, 4);
+            const mat = new THREE.MeshBasicMaterial({color: 0xff00ff});
+            const cube = new THREE.Mesh(geo, mat);
+            targetScene.add(cube);
+            remotePlayers[data.id] = cube;
+
+            // Carrega o Soldado com a escala do seu jogo
+            if (window.loaderGLTF) {
+                window.loaderGLTF.load(SKIN_AMIGO, (gltf) => {
+                    targetScene.remove(cube);
+                    const model = gltf.scene;
+                    // Escala exata do seu código (8 / altura)
+                    let box = new THREE.Box3().setFromObject(model);
+                    let s = 8 / (box.getSize(new THREE.Vector3()).y || 1);
+                    model.scale.set(s, s, s);
+                    targetScene.add(model);
+                    remotePlayers[data.id] = model;
+                });
+            }
+        }
+
+        // 3. ATUALIZAÇÃO DA POSIÇÃO
+        if (remotePlayers[data.id]) {
+            remotePlayers[data.id].position.set(parseFloat(data.x), parseFloat(data.y), parseFloat(data.z));
+            if(data.ry) remotePlayers[data.id].rotation.y = parseFloat(data.ry);
+        }
+    }
+
+    // LOOP DE ENVIO (Com correção para não falhar na TV)
+    setInterval(() => {
+        if (client && client.connected && window.player) {
+            try {
+                const p = window.player.position;
+                client.publish('siri/multi/' + sala, JSON.stringify({
+                    type: 'sync',
+                    id: meuID,
+                    x: p.x.toFixed(2),
+                    y: p.y.toFixed(2),
+                    z: p.z.toFixed(2),
+                    ry: window.player.rotation.y.toFixed(2)
+                }));
+            } catch(e) {}
+        }
+    }, 200);
+
+    function addLog(nick, msg) {
+        const logs = document.getElementById('chat-logs');
+        logs.innerHTML += `<div><b>${nick}:</b> ${msg}</div>`;
+        logs.scrollTop = logs.scrollHeight;
+    }
+}
