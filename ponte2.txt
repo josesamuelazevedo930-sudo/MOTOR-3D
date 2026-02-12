@@ -1,0 +1,123 @@
+if(document.getElementById('ui-multi')) document.getElementById('ui-multi').remove();
+
+const mqttScript = document.createElement('script');
+mqttScript.src = 'https://cdn.jsdelivr.net/npm/mqtt@4.1.0/dist/mqtt.min.js';
+document.head.appendChild(mqttScript);
+
+mqttScript.onload = () => {
+    setupMultiplayerMQTT();
+};
+
+function setupMultiplayerMQTT() {
+    const ui = document.createElement('div');
+    ui.id = 'ui-multi';
+    ui.style.cssText = "position:absolute; top:10px; left:10px; z-index:10000; font-family:sans-serif; background:rgba(0,0,0,0.9); padding:12px; border-radius:10px; border:2px solid #00ffff; color:white; width:200px;";
+    ui.innerHTML = `
+        <b style="color:#00ffff;">SIRI SYNC V11</b><br>
+        <div id="setup-mp">
+            <input id="mp-name" placeholder="Nome" style="width:90%; margin:5px 0;">
+            <input id="mp-room" placeholder="Sala" style="width:90%; margin:5px 0;">
+            <button id="btn-con" style="width:100%; padding:8px; background:green; color:white; border:none; font-weight:bold;">CONECTAR</button>
+        </div>
+        <div id="chat-area" style="display:none; margin-top:10px;">
+            <div id="chat-logs" style="height:80px; overflow-y:auto; font-size:11px; background:#000; padding:5px; border:1px solid #333; margin-bottom:5px; color:#0f0;"></div>
+            <div style="display:flex; gap:2px;">
+                <input type="text" id="chat-input" placeholder="Oi!" style="flex:1; background:#222; color:white; border:1px solid #444;">
+                <button id="btn-send" style="background:#007bff; color:white; border:none; padding:5px;">OK</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(ui);
+
+    let client, sala, meuNome;
+    let remotePlayers = {};
+
+    document.getElementById('btn-con').onclick = () => {
+        meuNome = document.getElementById('mp-name').value.trim() || "User" + Math.floor(Math.random()*100);
+        sala = document.getElementById('mp-room').value.trim() || "123";
+        
+        client = mqtt.connect('wss://broker.emqx.io:8084/mqtt', {
+            clientId: 'siri-' + Math.random().toString(36).substr(2, 5)
+        });
+
+        client.on('connect', () => {
+            document.getElementById('setup-mp').style.display = 'none';
+            document.getElementById('chat-area').style.display = 'block';
+            client.subscribe('siri/multi/' + sala);
+            addLog("Sistema", "Online! Move-te para sincronizar.");
+        });
+
+        client.on('message', (topic, msg) => {
+            try {
+                const data = JSON.parse(msg.toString());
+                if (data.id !== meuNome) {
+                    if (data.type === 'sync') handleRemoteSync(data);
+                    if (data.type === 'chat') addLog(data.id, data.text);
+                }
+            } catch (e) {}
+        });
+    };
+
+    function handleRemoteSync(data) {
+        // 1. Se o player não existe, cria um CUBO de emergência primeiro
+        if (!remotePlayers[data.id]) {
+            console.log("Criando novo player:", data.id);
+            const geo = new THREE.BoxGeometry(2, 5, 2);
+            // Cubo Ciano Brilhante para ser impossível de não ver
+            const mat = new THREE.MeshBasicMaterial({color: 0x00ffff, wireframe: false});
+            remotePlayers[data.id] = new THREE.Mesh(geo, mat);
+            
+            // Coloca na posição inicial recebida
+            remotePlayers[data.id].position.set(parseFloat(data.x), parseFloat(data.y) + 2.5, parseFloat(data.z));
+            scene.add(remotePlayers[id]);
+
+            // 2. Tenta carregar a Skin Real por cima do cubo
+            if (window.loaderGLTF && data.skin) {
+                loaderGLTF.load(data.skin, (gltf) => {
+                    scene.remove(remotePlayers[data.id]); // Remove o cubo
+                    remotePlayers[data.id] = gltf.scene;
+                    scene.add(remotePlayers[data.id]);
+                }, undefined, (err) => {
+                    console.log("Erro ao carregar GLB na TV, mantendo o cubo.");
+                });
+            }
+        }
+
+        // 3. Atualiza posição e rotação (sempre)
+        if (remotePlayers[data.id]) {
+            remotePlayers[data.id].position.set(parseFloat(data.x), parseFloat(data.y), parseFloat(data.z));
+            remotePlayers[data.id].rotation.y = parseFloat(data.ry);
+        }
+    }
+
+    setInterval(() => {
+        if (client && client.connected && window.player) {
+            client.publish('siri/multi/' + sala, JSON.stringify({
+                type: 'sync',
+                id: meuNome,
+                x: player.position.x.toFixed(2),
+                y: player.position.y.toFixed(2),
+                z: player.position.z.toFixed(2),
+                ry: player.rotation.y.toFixed(2),
+                skin: window.currentSkinUrl || ""
+            }));
+        }
+    }, 150);
+
+    function addLog(nick, msg) {
+        const logs = document.getElementById('chat-logs');
+        logs.innerHTML += `<div><b>${nick}:</b> ${msg}</div>`;
+        logs.scrollTop = logs.scrollHeight;
+    }
+
+    document.getElementById('btn-send').onclick = () => {
+        const inp = document.getElementById('chat-input');
+        if (inp.value && client) {
+            client.publish('siri/multi/' + sala, JSON.stringify({
+                type: 'chat', id: meuNome, text: inp.value
+            }));
+            addLog("Eu", inp.value);
+            inp.value = "";
+        }
+    };
+}
