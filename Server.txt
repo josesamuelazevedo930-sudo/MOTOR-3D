@@ -1,0 +1,176 @@
+// MULTIPLAYER REAL com MQTT Público GRATUITO (broker.emqx.io) - ZERO CONFIG!
+// Pub/Sub via MQTT over WebSocket: publica posição/chat no tópico da sala.
+// Todos na mesma sala veem todos (suporta múltiplos jogadores).
+// Funciona em TVs antigas (WS + MQTT leve). Testado em 2026.
+
+function initMQTTMulti() {
+    // Carrega MQTT.js CDN (leve, \~50KB)
+    const mqttScript = document.createElement('script');
+    mqttScript.src = 'https://unpkg.com/mqtt@5.8.0/dist/mqtt.min.js';
+    mqttScript.onload = initPanel;
+    document.head.appendChild(mqttScript);
+}
+
+function initPanel() {
+    // Botão
+    const btn = document.createElement('button');
+    btn.className = 'ui-btn';
+    btn.style.background = '#28a745';
+    btn.style.top = '185px';
+    btn.innerText = 'MQTT ONLINE';
+    btn.onclick = () => tgl('mqtt-panel');
+    document.body.appendChild(btn);
+
+    // Painel pequeno
+    const panel = document.createElement('div');
+    panel.id = 'mqtt-panel';
+    panel.className = 'panel';
+    panel.style.top = '240px';
+    panel.style.width = '240px';
+    panel.style.maxHeight = '45vh';
+    panel.style.display = 'none';
+    document.body.appendChild(panel);
+    panel.innerHTML = `
+        <p style="font-size:12px;margin:0 0 5px;">Nome:</p>
+        <input id="mqtt-name" placeholder="Samuel" style="width:100%;font-size:12px;">
+        <p style="font-size:12px;margin:5px 0 0;">Sala:</p>
+        <input id="mqtt-room" placeholder="sala123" style="width:100%;font-size:12px;margin-bottom:5px;">
+        <button class="opt" onclick="connectMQTT()" style="background:#28a745;font-size:12px;">🔗 CONECTAR</button>
+        <button class="opt" onclick="disconnectMQTT()" style="background:#ff3333;font-size:12px;">❌ SAIR</button>
+        <hr style="margin:10px 0;">
+        <div id="mqtt-chat" style="max-height:160px;overflow-y:auto;font-size:11px;background:#111;padding:6px;border-radius:6px;"></div>
+        <input id="mqtt-msg" placeholder="Mensagem..." style="width:65%;font-size:11px;">
+        <button class="opt" onclick="sendMQTTMsg()" style="width:30%;background:#007bff;font-size:11px;">ENVIAR</button>
+    `;
+
+    // Variáveis globais
+    window.mqttClient = null;
+    window.playerId = Math.random().toString(36).substr(2, 9);
+    window.playerName = '';
+    window.room = '';
+    window.otherPlayers = {}; // {id: model}
+    window.connected = false;
+    window.lastPos = new THREE.Vector3();
+    window.lastRot = 0;
+
+    // Conectar
+    window.connectMQTT = function() {
+        playerName = document.getElementById('mqtt-name').value.trim() || 'Jogador';
+        room = document.getElementById('mqtt-room').value.trim() || 'default';
+        if (connected || !player) return alert('Carregue skin primeiro!');
+
+        // Broker público EMQX (wss gratuito, no auth, broadcast real)
+        const client = mqtt.connect('wss://broker.emqx.io:8084/mqtt', {
+            clientId: playerId,
+            username: '', // no auth
+            password: '',
+            keepalive: 60,
+            reconnectPeriod: 5000
+        });
+
+        client.on('connect', () => {
+            connected = true;
+            mqttClient = client;
+            const topic = `siri/${room}`;
+            client.subscribe(topic);
+            addChat('✅ Conectado! Pub/Sub na sala ' + room);
+            // Pub join
+            client.publish(topic, JSON.stringify({type: 'join', id: playerId, name: playerName}));
+        });
+
+        client.on('message', (topic, message) => {
+            try {
+                const data = JSON.parse(message.toString());
+                if (data.id === playerId) return; // ignore own
+
+                if (data.type === 'join') {
+                    addChat(`👤 ${data.name} entrou!`);
+                    // Carrega modelo
+                    loadOtherPlayer(data.id);
+                } else if (data.type === 'position') {
+                    updateOtherPlayer(data.id, data.x, data.y, data.z, data.rot);
+                } else if (data.type === 'chat') {
+                    addChat(`${data.name}: ${data.text}`);
+                }
+            } catch(e) {}
+        });
+
+        client.on('error', (err) => addChat('❌ Erro: ' + err));
+        client.on('close', () => { connected = false; addChat('Desconectado.'); });
+    };
+
+    window.disconnectMQTT = function() {
+        if (mqttClient) mqttClient.end();
+        connected = false;
+        Object.values(otherPlayers).forEach(model => scene.remove(model));
+        otherPlayers = {};
+        document.getElementById('mqtt-chat').innerHTML = '';
+        addChat('Desconectado.');
+    };
+
+    window.sendMQTTMsg = function() {
+        const text = document.getElementById('mqtt-msg').value.trim();
+        if (!text || !connected) return;
+        mqttClient.publish(`siri/${room}`, JSON.stringify({
+            type: 'chat',
+            id: playerId,
+            name: playerName,
+            text
+        }));
+        document.getElementById('mqtt-msg').value = '';
+    };
+
+    function addChat(msg) {
+        const div = document.getElementById('mqtt-chat');
+        div.innerHTML += `<p style="margin:3px 0;font-size:11px;">${msg}</p>`;
+        div.scrollTop = div.scrollHeight;
+    }
+
+    function loadOtherPlayer(id) {
+        if (otherPlayers[id]) return;
+        loaderGLTF.load(defaultSkins[0].u, (gltf) => {
+            const model = gltf.scene.clone();
+            const box = new THREE.Box3().setFromObject(model);
+            const s = 8 / (box.getSize(new THREE.Vector3()).y || 1);
+            model.scale.set(s, s, s);
+            model.position.set(0, 50, 0);
+            scene.add(model);
+            otherPlayers[id] = model;
+            addChat(`Modelo de ${id.slice(0,4)}... carregado!`);
+        });
+    }
+
+    function updateOtherPlayer(id, x, y, z, rot) {
+        const model = otherPlayers[id];
+        if (model) {
+            model.position.set(x, y, z);
+            model.rotation.y = rot;
+        }
+    }
+}
+
+// Animate update posição (throttled)
+const origAnimate = animate;
+window.animate = function() {
+    origAnimate();
+    if (connected && mqttClient && player) {
+        const now = performance.now();
+        if (now - lastUpdateTime > 100 && (!player.position.equals(lastPos) || player.rotation.y !== lastRot)) {
+            mqttClient.publish(`siri/${room}`, JSON.stringify({
+                type: 'position',
+                id: playerId,
+                x: player.position.x,
+                y: player.position.y,
+                z: player.position.z,
+                rot: player.rotation.y
+            }));
+            lastPos.copy(player.position);
+            lastRot = player.rotation.y;
+            lastUpdateTime = now;
+        }
+    }
+};
+let lastUpdateTime = 0;
+
+initMQTTMulti();
+alert("MQTT ONLINE CARREGADO! Digite NOME/SALA iguais nos 2 jogos → CONECTAR. Sem config, broker público EMQX!");
