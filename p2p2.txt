@@ -1,0 +1,127 @@
+// Multiplayer com SocketsBay público (broadcast em canal fixo)
+// Um canal = uma sala. Teste com canal 42 (fixo para simplicidade)
+// Envia posição/chat para todos no mesmo canal.
+
+function initSocketsBay() {
+    const btn = document.createElement('button');
+    btn.className = 'ui-btn';
+    btn.style.background = '#ff8800';
+    btn.style.top = '185px';
+    btn.innerText = 'BAY MULTI';
+    btn.onclick = () => tgl('bay-panel');
+    document.body.appendChild(btn);
+
+    const panel = document.createElement('div');
+    panel.id = 'bay-panel';
+    panel.className = 'panel';
+    panel.style.top = '240px';
+    panel.style.display = 'none';
+    document.body.appendChild(panel);
+    panel.innerHTML = `
+        <p style="font-size:11px;margin:0;">Nome:</p>
+        <input id="bay-name" placeholder="Samuel" style="width:95%;">
+        <p style="font-size:11px;margin:5px 0;">Sala (número 1-999):</p>
+        <input id="bay-room" placeholder="42" style="width:95%;">
+        <button class="opt" onclick="connectBay()" style="background:#28a745;font-size:11px;">CONECTAR</button>
+        <button class="opt" onclick="disconnectBay()" style="background:#ff3333;font-size:11px;">SAIR</button>
+        <div id="bay-chat" style="max-height:140px;overflow-y:auto;font-size:11px;background:#111;padding:5px;border-radius:6px;"></div>
+        <input id="bay-msg" placeholder="Msg..." style="width:70%;font-size:11px;">
+        <button class="opt" onclick="sendBay()" style="width:25%;background:#007bff;font-size:11px;">ENVIAR</button>
+    `;
+
+    let ws = null;
+    let name = '';
+    let room = '42'; // default fixo, mude se quiser
+    let connected = false;
+    let otherModel = null;
+    let lastPos = new THREE.Vector3();
+    let lastRot = 0;
+
+    window.connectBay = function() {
+        name = document.getElementById('bay-name').value.trim() || 'Jog' + Math.floor(Math.random()*100);
+        room = document.getElementById('bay-room').value.trim() || '42';
+        if (connected) return;
+
+        const url = `wss://socketsbay.com/wss/v2/${room}/demo/`;
+        addChat(`Tentando canal ${room}...`);
+
+        ws = new WebSocket(url);
+
+        ws.onopen = () => {
+            connected = true;
+            addChat('Conectado ao SocketsBay! Envie msg para testar.');
+            ws.send(JSON.stringify({type: 'join', name: name}));
+        };
+
+        ws.onmessage = (e) => {
+            try {
+                const data = JSON.parse(e.data);
+                if (data.type === 'join' && data.name !== name) {
+                    addChat(`${data.name} entrou!`);
+                    loadOther();
+                } else if (data.type === 'move' && data.name !== name) {
+                    if (otherModel) {
+                        otherModel.position.set(data.x, data.y, data.z);
+                        otherModel.rotation.y = data.rot;
+                    }
+                } else if (data.type === 'msg') {
+                    addChat(`${data.name}: ${data.text}`);
+                }
+            } catch (err) {
+                addChat('Recebido: ' + e.data);
+            }
+        };
+
+        ws.onclose = () => {
+            connected = false;
+            addChat('Desconectado.');
+        };
+    };
+
+    window.disconnectBay = function() {
+        if (ws) ws.close();
+        connected = false;
+        if (otherModel) scene.remove(otherModel);
+        otherModel = null;
+    };
+
+    window.sendBay = function() {
+        const msg = document.getElementById('bay-msg').value.trim();
+        if (!msg || !connected) return;
+        ws.send(JSON.stringify({type: 'msg', name: name, text: msg}));
+        document.getElementById('bay-msg').value = '';
+    };
+
+    function addChat(msg) {
+        const div = document.getElementById('bay-chat');
+        div.innerHTML += `<p style="margin:3px 0;">${msg}</p>`;
+        div.scrollTop = div.scrollHeight;
+    }
+
+    function loadOther() {
+        loaderGLTF.load(defaultSkins[0].u, gltf => {
+            otherModel = gltf.scene.clone();
+            const box = new THREE.Box3().setFromObject(otherModel);
+            const s = 8 / (box.getSize(new THREE.Vector3()).y || 1);
+            otherModel.scale.set(s, s, s);
+            scene.add(otherModel);
+        });
+    }
+
+    const origAnimate = animate;
+    window.animate = function() {
+        origAnimate();
+        if (connected && ws && ws.readyState === WebSocket.OPEN && player) {
+            const pos = player.position;
+            const rot = player.rotation.y;
+            if (!pos.equals(lastPos) || rot !== lastRot) {
+                ws.send(JSON.stringify({type: 'move', name: name, x: pos.x, y: pos.y, z: pos.z, rot}));
+                lastPos.copy(pos);
+                lastRot = rot;
+            }
+        }
+    };
+}
+
+initSocketsBay();
+alert('Script SocketsBay carregado! Use BAY MULTI, sala qualquer número (ex: 42) nos dois lados.');
