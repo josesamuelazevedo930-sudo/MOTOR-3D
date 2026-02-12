@@ -1,0 +1,170 @@
+(function() {
+    if (window.siriTimer) clearInterval(window.siriTimer);
+    if (document.getElementById('chef-hud')) document.getElementById('chef-hud').remove();
+
+    let chefData = {
+        moedas: parseInt(localStorage.getItem('siriMoedas')) || 0,
+        posC: null, posB: null, labelC: null, labelB: null,
+        estado: "CONFIG", progresso: 0, queimando: false
+    };
+
+    // 1. FUNÇÃO DE ÁUDIO (BIP)
+    function tocarBip(frequencia = 440, duracao = 0.1) {
+        try {
+            const context = new (window.AudioContext || window.webkitAudioContext)();
+            const osc = context.createOscillator();
+            const gain = context.createGain();
+            osc.connect(gain);
+            gain.connect(context.destination);
+            osc.frequency.value = frequencia;
+            gain.gain.setValueAtTime(0.1, context.currentTime);
+            osc.start();
+            osc.stop(context.currentTime + duracao);
+        } catch(e) { console.log("Áudio não suportado"); }
+    }
+
+    // 2. HUD MELHORADA COM MINIGAME
+    const hud = document.createElement('div');
+    hud.id = 'chef-hud';
+    hud.style.cssText = "position:absolute; left:20px; top:250px; width:180px; background:rgba(0,0,0,0.9); border:2px solid #ff00ff; border-radius:10px; padding:10px; color:white; font-family:sans-serif; z-index:10002; text-align:center;";
+    hud.innerHTML = `
+        <div style="color:#ff00ff; font-weight:bold; margin-bottom:5px;">SIRI CHEF PRO 🍔</div>
+        <div id="c-mon" style="color:#0f0; font-size:18px;">$ ${chefData.moedas}</div>
+        <div id="c-status" style="font-size:11px; margin:5px 0; color:#aaa;">Configure os locais!</div>
+        
+        <div id="cook-zone" style="display:none; margin:10px 0;">
+            <div style="font-size:10px; color:yellow;">CLIQUE NO HAMBÚRGUER!</div>
+            <button id="burger-btn" style="width:60px; height:60px; border-radius:50%; border:4px solid #555; background:#d35400; cursor:pointer; margin:5px auto; display:block; outline:none;"></button>
+            <div id="cook-label" style="font-size:10px; font-weight:bold;">CRU...</div>
+        </div>
+
+        <div id="setup-btns">
+            <button id="b-chapa" style="width:100%; background:orange; border:none; margin-bottom:4px; padding:5px; border-radius:4px; font-weight:bold;">SET CHAPA</button>
+            <button id="b-balcao" style="width:100%; background:green; border:none; color:white; padding:5px; border-radius:4px; font-weight:bold;">SET BALCÃO</button>
+        </div>
+    `;
+    document.body.appendChild(hud);
+
+    function criarEtiqueta(texto, cor) {
+        const canvas = document.createElement('canvas');
+        canvas.width = 256; canvas.height = 128;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = "rgba(0,0,0,0.8)";
+        ctx.fillRect(0, 0, 256, 128);
+        ctx.fillStyle = cor;
+        ctx.font = "bold 45px Arial";
+        ctx.textAlign = "center";
+        ctx.fillText(texto, 128, 75);
+        const tex = new THREE.CanvasTexture(canvas);
+        const mat = new THREE.SpriteMaterial({ map: tex, depthTest: false });
+        const spr = new THREE.Sprite(mat);
+        spr.scale.set(12, 6, 1);
+        scene.add(spr);
+        return spr;
+    }
+
+    // BOTÕES DE CONFIG
+    document.getElementById('b-chapa').onclick = () => {
+        if(chefData.labelC) scene.remove(chefData.labelC);
+        chefData.labelC = criarEtiqueta("🔥 CHAPA", "#ffaa00");
+        chefData.labelC.position.copy(player.position);
+        chefData.labelC.position.y += 12;
+        chefData.posC = player.position.clone();
+        tocarBip(600);
+        checkStart();
+    };
+
+    document.getElementById('b-balcao').onclick = () => {
+        if(chefData.labelB) scene.remove(chefData.labelB);
+        chefData.labelB = criarEtiqueta("💰 BALCÃO", "#00ffff");
+        chefData.labelB.position.copy(player.position);
+        chefData.labelB.position.y += 12;
+        chefData.posB = player.position.clone();
+        tocarBip(800);
+        checkStart();
+    };
+
+    function checkStart() {
+        if(chefData.posC && chefData.posB) {
+            chefData.estado = "BUSCAR";
+            document.getElementById('setup-btns').style.display = "none";
+            document.getElementById('c-status').innerText = "VÁ AO BALCÃO!";
+        }
+    }
+
+    // LOGICA DO MINIGAME
+    const burgerBtn = document.getElementById('burger-btn');
+    burgerBtn.onclick = () => {
+        if(chefData.estado === "COZINHANDO" && chefData.progresso >= 80 && chefData.progresso <= 100) {
+            // SUCESSO!
+            chefData.estado = "ENTREGAR";
+            tocarBip(1000, 0.3);
+            document.getElementById('cook-zone').style.display = "none";
+            document.getElementById('c-status').innerText = "PERFEITO! LEVE AO BALCÃO!";
+        } else if (chefData.estado === "COZINHANDO") {
+            // CLICOU CEDO OU QUEIMOU
+            tocarBip(200, 0.5);
+            chefData.progresso = 0;
+            document.getElementById('c-status').innerText = "ERROU O TEMPO!";
+        }
+    };
+
+    window.siriTimer = setInterval(() => {
+        if(!player || chefData.estado === "CONFIG") return;
+
+        let dC = player.position.distanceTo(chefData.posC);
+        let dB = player.position.distanceTo(chefData.posB);
+        const msg = document.getElementById('c-status');
+        const cookZone = document.getElementById('cook-zone');
+        const cookLabel = document.getElementById('cook-label');
+
+        if(chefData.estado === "BUSCAR" && dB < 7) {
+            chefData.estado = "IR_CHAPA";
+            msg.innerText = "PEDIDO PEGO! VÁ COZINHAR!";
+            tocarBip(500);
+        }
+
+        if(chefData.estado === "IR_CHAPA" && dC < 7) {
+            chefData.estado = "COZINHANDO";
+            chefData.progresso = 0;
+            cookZone.style.display = "block";
+        }
+
+        if(chefData.estado === "COZINHANDO") {
+            chefData.progresso += 1.5;
+            
+            // Mudança de cores do hambúrguer
+            if(chefData.progresso < 80) {
+                burgerBtn.style.background = "#d35400"; // Laranja (cru/fritando)
+                cookLabel.innerText = "FRITANDO...";
+                cookLabel.style.color = "white";
+            } else if(chefData.progresso <= 100) {
+                burgerBtn.style.background = "#2ecc71"; // Verde (PRONTO!)
+                cookLabel.innerText = "CLIQUE AGORA!!!";
+                cookLabel.style.color = "#0f0";
+                if(Math.floor(chefData.progresso) % 5 === 0) tocarBip(1200, 0.05); // Bip de alerta
+            } else {
+                burgerBtn.style.background = "#222"; // Preto (QUEIMOU)
+                cookLabel.innerText = "QUEIMOU! RECOMECE";
+                cookLabel.style.color = "red";
+                if(chefData.progresso > 130) chefData.progresso = 0; // Reseta a fritura
+            }
+            
+            if(dC > 10) { 
+                chefData.estado = "IR_CHAPA"; 
+                cookZone.style.display = "none";
+                msg.innerText = "VOCÊ SAIU DA CHAPA!";
+            }
+        }
+
+        if(chefData.estado === "ENTREGAR" && dB < 7) {
+            chefData.moedas += 100;
+            localStorage.setItem('siriMoedas', chefData.moedas);
+            document.getElementById('c-mon').innerText = "$ " + chefData.moedas;
+            chefData.estado = "BUSCAR";
+            msg.innerText = "ENTREGUE! +$100";
+            tocarBip(1500, 0.2);
+            tocarBip(1800, 0.2);
+        }
+    }, 250);
+})();
