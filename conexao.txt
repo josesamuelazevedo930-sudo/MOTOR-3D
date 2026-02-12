@@ -1,0 +1,89 @@
+if(document.getElementById('ui-multi')) document.getElementById('ui-multi').remove();
+
+const mqttScript = document.createElement('script');
+mqttScript.src = 'https://cdn.jsdelivr.net/npm/mqtt@4.1.0/dist/mqtt.min.js';
+document.head.appendChild(mqttScript);
+
+mqttScript.onload = () => {
+    const ui = document.createElement('div');
+    ui.id = 'ui-multi';
+    ui.style.cssText = "position:absolute; top:10px; left:10px; z-index:10000; font-family:sans-serif; background:rgba(0,0,0,0.9); padding:10px; border-radius:10px; border:2px solid #00ffff; color:white; width:200px;";
+    ui.innerHTML = `
+        <b style="color:#00ffff;">SIRI V32 - FORCE DRAW</b><br>
+        <div id="setup-mp">
+            <input id="mp-room" placeholder="Sala" style="width:80%; margin:5px; background:#222; color:#fff; border:1px solid #444;">
+            <button id="btn-con" style="width:90%; padding:5px; background:green; color:white; font-weight:bold;">CONECTAR</button>
+        </div>
+        <div id="chat-area" style="display:none;">
+            <div id="chat-logs" style="height:60px; overflow-y:auto; font-size:10px; background:#000; color:#0f0; margin-top:5px;"></div>
+            <div id="st-debug" style="font-size:9px; color:yellow;">Status: Buscando sinal...</div>
+        </div>
+    `;
+    document.body.appendChild(ui);
+
+    let client, sala, meuID = "User-" + Math.floor(Math.random()*999);
+    let remoteAvatars = {};
+
+    document.getElementById('btn-con').onclick = () => {
+        sala = document.getElementById('mp-room').value || "1";
+        client = mqtt.connect('wss://broker.emqx.io:8084/mqtt', { clientId: meuID });
+
+        client.on('connect', () => {
+            document.getElementById('setup-mp').style.display = 'none';
+            document.getElementById('chat-area').style.display = 'block';
+            client.subscribe('siri/multi/' + sala);
+        });
+
+        client.on('message', (topic, msg) => {
+            try {
+                const data = JSON.parse(msg.toString());
+                if (data.id !== meuID) {
+                    if (data.type === 'sync') handleSync(data);
+                    if (data.type === 'chat') addLog(data.id, data.text);
+                }
+            } catch (e) {}
+        });
+    };
+
+    function handleSync(data) {
+        // Tenta pegar a cena global do seu jogo
+        const targetScene = window.scene;
+        if (!targetScene) return;
+
+        if (!remoteAvatars[data.id]) {
+            // Se o amigo não tem cubo, cria um GIGANTE e BRILHANTE
+            const geo = new THREE.BoxGeometry(8, 15, 8); // Grande para não ter erro
+            const mat = new THREE.MeshBasicMaterial({ color: 0xff00ff, wireframe: false });
+            const mesh = new THREE.Mesh(geo, mat);
+            
+            // Força a entrada na cena
+            targetScene.add(mesh);
+            remoteAvatars[data.id] = mesh;
+            addLog("SISTEMA", "Player " + data.id + " renderizado!");
+        }
+
+        // Atualiza posição
+        const avatar = remoteAvatars[data.id];
+        avatar.position.set(parseFloat(data.x), parseFloat(data.y), parseFloat(data.z));
+        avatar.rotation.y = parseFloat(data.ry || 0);
+        
+        document.getElementById('st-debug').innerText = "Recebendo: X" + Math.floor(data.x);
+    }
+
+    // O MOTOR DE ENVIO (Lendo do seu código 'player')
+    setInterval(() => {
+        if (client && client.connected && window.player) {
+            const p = window.player.position;
+            client.publish('siri/multi/' + sala, JSON.stringify({
+                type: 'sync', id: meuID,
+                x: p.x, y: p.y, z: p.z, ry: window.player.rotation.y
+            }));
+        }
+    }, 150);
+
+    function addLog(n, m) {
+        const logs = document.getElementById('chat-logs');
+        logs.innerHTML += `<div><b>${n}:</b> ${m}</div>`;
+        logs.scrollTop = logs.scrollHeight;
+    }
+}
