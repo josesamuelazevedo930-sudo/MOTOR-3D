@@ -1,0 +1,107 @@
+if(document.getElementById('ui-multi')) document.getElementById('ui-multi').remove();
+
+const mqttScript = document.createElement('script');
+mqttScript.src = 'https://cdn.jsdelivr.net/npm/mqtt@4.1.0/dist/mqtt.min.js';
+document.head.appendChild(mqttScript);
+
+mqttScript.onload = () => { setupV30(); };
+
+function setupV30() {
+    const ui = document.createElement('div');
+    ui.id = 'ui-multi';
+    ui.style.cssText = "position:absolute; top:10px; left:10px; z-index:9999; font-family:sans-serif; background:rgba(0,0,0,0.9); padding:10px; border-radius:10px; border:2px solid #00ffff; color:white; width:200px;";
+    ui.innerHTML = `
+        <b style="color:#00ffff;">SIRI V30 - DEEP SCAN</b><br>
+        <div id="mp-setup">
+            <input id="mp-room" placeholder="Sala" style="width:90%; margin:5px 0; background:#222; color:white; border:1px solid #444;">
+            <button id="btn-con" style="width:100%; padding:8px; background:green; color:white; border:none; font-weight:bold;">CONECTAR</button>
+        </div>
+        <div id="mp-active" style="display:none; margin-top:5px;">
+            <div id="st-debug" style="font-size:10px; color:#ff0;">Buscando player...</div>
+            <div id="chat-logs" style="height:50px; overflow:auto; font-size:10px; background:#000; margin-top:5px;"></div>
+        </div>
+    `;
+    document.body.appendChild(ui);
+
+    let client, sala, meuID = "P-" + Math.floor(Math.random()*999);
+    let remoteAvatars = {};
+    let localPlayerFound = null;
+
+    // --- MOTOR DE BUSCA DO SEU PERSONAGEM ---
+    function findLocalPlayer() {
+        // Tentativa 1: Variável global direta
+        if (window.player && window.player.position) return window.player;
+        
+        // Tentativa 2: Procurar na cena por um objeto que não seja o mapa
+        if (window.scene) {
+            let found = null;
+            window.scene.traverse((obj) => {
+                // O player geralmente é um Group ou Scene vindo do GLTF, e tem posição
+                if (obj.type === 'Group' && obj.position && obj !== window.mapModel) {
+                    found = obj;
+                }
+            });
+            return found;
+        }
+        return null;
+    }
+
+    document.getElementById('btn-con').onclick = () => {
+        sala = document.getElementById('mp-room').value || "1";
+        client = mqtt.connect('wss://broker.emqx.io:8084/mqtt', { clientId: meuID });
+
+        client.on('connect', () => {
+            document.getElementById('mp-setup').style.display = 'none';
+            document.getElementById('mp-active').style.display = 'block';
+            client.subscribe('siri/v30/' + sala);
+        });
+
+        client.on('message', (topic, msg) => {
+            try {
+                const data = JSON.parse(msg.toString());
+                if (data.id !== meuID) renderFriend(data);
+            } catch (e) {}
+        });
+    };
+
+    function renderFriend(data) {
+        if (!window.scene) return;
+        if (!remoteAvatars[data.id]) {
+            // Cria um Cubo Neon Ciano
+            const geo = new THREE.BoxGeometry(6, 10, 6);
+            const mat = new THREE.MeshBasicMaterial({ color: 0x00ffff });
+            const mesh = new THREE.Mesh(geo, mat);
+            window.scene.add(mesh);
+            remoteAvatars[data.id] = mesh;
+            addLog("INFO", "Amigo Conectado!");
+        }
+        remoteAvatars[data.id].position.set(data.x, data.y, data.z);
+        remoteAvatars[data.id].rotation.y = data.ry;
+    }
+
+    // LOOP DE TRANSMISSÃO
+    setInterval(() => {
+        if (!client || !client.connected) return;
+
+        localPlayerFound = findLocalPlayer();
+
+        if (localPlayerFound) {
+            const p = localPlayerFound.position;
+            const r = localPlayerFound.rotation.y;
+            client.publish('siri/v30/' + sala, JSON.stringify({
+                id: meuID, x: p.x, y: p.y, z: p.z, ry: r
+            }));
+            document.getElementById('st-debug').innerText = "✅ TRANSMITINDO GPS";
+            document.getElementById('st-debug').style.color = "#0f0";
+        } else {
+            document.getElementById('st-debug').innerText = "❌ PLAYER NÃO ENCONTRADO";
+            document.getElementById('st-debug').style.color = "#f00";
+        }
+    }, 200);
+
+    function addLog(n, m) {
+        const l = document.getElementById('chat-logs');
+        l.innerHTML += `<div>${m}</div>`;
+        l.scrollTop = l.scrollHeight;
+    }
+}
