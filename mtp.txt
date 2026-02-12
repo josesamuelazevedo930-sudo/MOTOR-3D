@@ -1,0 +1,99 @@
+if(document.getElementById('ui-multi')) document.getElementById('ui-multi').remove();
+
+const mqttScript = document.createElement('script');
+mqttScript.src = 'https://cdn.jsdelivr.net/npm/mqtt@4.1.0/dist/mqtt.min.js';
+document.head.appendChild(mqttScript);
+
+mqttScript.onload = () => { setupV25(); };
+
+function setupV25() {
+    const ui = document.createElement('div');
+    ui.id = 'ui-multi';
+    ui.style.cssText = "position:absolute; top:10px; left:10px; z-index:10000; font-family:sans-serif; background:rgba(0,0,0,0.9); padding:10px; border-radius:10px; border:3px solid #ff00ff; color:white; width:220px;";
+    ui.innerHTML = `
+        <b style="color:#ff00ff;">SIRI V25 - FORCE RENDER</b><br>
+        <div id="mp-setup">
+            <input id="mp-room" placeholder="Sala" style="width:90%; margin:5px 0; background:#222; color:white; border:1px solid #444;">
+            <button id="btn-con" style="width:100%; padding:8px; background:#ff00ff; color:white; border:none; font-weight:bold;">CONECTAR AGORA</button>
+        </div>
+        <div id="mp-active" style="display:none;">
+            <div id="st-info" style="font-size:10px; color:#0f0;">Status: Online</div>
+            <div id="chat-logs" style="height:50px; overflow:auto; font-size:10px; background:#000; margin-top:5px;"></div>
+        </div>
+    `;
+    document.body.appendChild(ui);
+
+    let client, sala, meuID = "User-" + Math.floor(Math.random()*999);
+    let remotePlayers = {};
+    // MODELO EXTERNO (Um robozinho leve do GitHub)
+    const MODELO_URL = "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/Duck/glTF-Binary/Duck.glb"; 
+
+    document.getElementById('btn-con').onclick = () => {
+        sala = document.getElementById('mp-room').value || "1";
+        client = mqtt.connect('wss://broker.emqx.io:8084/mqtt', { clientId: meuID });
+
+        client.on('connect', () => {
+            document.getElementById('mp-setup').style.display = 'none';
+            document.getElementById('mp-active').style.display = 'block';
+            client.subscribe('siri/force/' + sala);
+        });
+
+        client.on('message', (topic, msg) => {
+            try {
+                const data = JSON.parse(msg.toString());
+                if (data.id !== meuID) handleData(data);
+            } catch (e) {}
+        });
+    };
+
+    function handleData(data) {
+        if (!window.scene) return;
+
+        if (!remotePlayers[data.id]) {
+            addLog("SISTEMA", "Injetando player...");
+            
+            // 1. CRIAR ESFERA DE EMERGÊNCIA (Se o modelo falhar, isso aparece)
+            const geo = new THREE.SphereGeometry(3, 16, 16);
+            const mat = new THREE.MeshBasicMaterial({ color: 0xff00ff }); // Rosa choque
+            const emergencyMesh = new THREE.Mesh(geo, mat);
+            window.scene.add(emergencyMesh);
+            remotePlayers[data.id] = emergencyMesh;
+
+            // 2. TENTAR CARREGAR MODELO EXTERNO (O Pato ou Robo)
+            if (window.loaderGLTF) {
+                window.loaderGLTF.load(MODELO_URL, (gltf) => {
+                    window.scene.remove(emergencyMesh);
+                    const model = gltf.scene;
+                    model.scale.set(5, 5, 5); // Tamanho visível
+                    window.scene.add(model);
+                    remotePlayers[data.id] = model;
+                    addLog("SISTEMA", "Modelo 3D Carregado!");
+                }, undefined, (err) => {
+                    addLog("AVISO", "Erro no modelo, usando esfera.");
+                });
+            }
+        }
+
+        // Atualizar Posição
+        if (remotePlayers[data.id]) {
+            remotePlayers[data.id].position.set(parseFloat(data.x), parseFloat(data.y), parseFloat(data.z));
+            // Forçar visibilidade
+            remotePlayers[data.id].visible = true;
+        }
+    }
+
+    setInterval(() => {
+        if (client && client.connected && window.player) {
+            const p = window.player.position;
+            client.publish('siri/force/' + sala, JSON.stringify({
+                id: meuID, x: p.x, y: p.y, z: p.z
+            }));
+        }
+    }, 200);
+
+    function addLog(n, m) {
+        const l = document.getElementById('chat-logs');
+        l.innerHTML += `<div>${m}</div>`;
+        l.scrollTop = l.scrollHeight;
+    }
+}
