@@ -1,0 +1,137 @@
+if(document.getElementById('ui-multi')) document.getElementById('ui-multi').remove();
+
+const mqttScript = document.createElement('script');
+mqttScript.src = 'https://cdn.jsdelivr.net/npm/mqtt@4.1.0/dist/mqtt.min.js';
+document.head.appendChild(mqttScript);
+
+mqttScript.onload = () => { setupV17(); };
+
+function setupV17() {
+    const ui = document.createElement('div');
+    ui.id = 'ui-multi';
+    ui.style.cssText = "position:absolute; top:10px; left:10px; z-index:10000; font-family:sans-serif; background:rgba(0,0,0,0.9); padding:10px; border-radius:10px; border:2px solid #00ffff; color:white; width:220px;";
+    ui.innerHTML = `
+        <b style="color:#00ffff;">SIRI V17 - MULTIPLAYER</b><br>
+        <div id="setup-mp">
+            <input id="mp-name" placeholder="Teu Nome" style="width:90%; margin:5px 0;">
+            <input id="mp-room" placeholder="Sala" style="width:90%; margin:5px 0;">
+            <button id="btn-con" style="width:100%; padding:8px; background:#28a745; color:white; border:none; font-weight:bold;">CONECTAR</button>
+        </div>
+        <div id="chat-area" style="display:none; margin-top:5px;">
+            <div id="status-sync" style="font-size:10px; color:#ff0; margin-bottom:5px;">Procurando mundo...</div>
+            <div id="chat-logs" style="height:100px; overflow-y:auto; font-size:10px; background:#000; color:#0f0; padding:5px;"></div>
+            <input type="text" id="chat-input" placeholder="Mensagem" style="width:65%; font-size:10px;">
+            <button id="btn-send" style="width:30%; font-size:10px;">OK</button>
+        </div>
+    `;
+    document.body.appendChild(ui);
+
+    let client, sala, meuNome;
+    let remotePlayers = {}; 
+    let myLastPos = {x:0, y:0, z:0, ry:0};
+
+    // FUNÇÃO QUE PROCURA A CENA NO USB LOCAL
+    function getScene() {
+        return window.scene || (window.game && window.game.scene) || (window.world && window.world.scene) || null;
+    }
+
+    document.getElementById('btn-con').onclick = () => {
+        meuNome = document.getElementById('mp-name').value || "User"+Math.floor(Math.random()*99);
+        sala = document.getElementById('mp-room').value || "1";
+        
+        client = mqtt.connect('wss://broker.emqx.io:8084/mqtt', { clientId: 'siri-' + Math.random().toString(36).substr(2, 5) });
+
+        client.on('connect', () => {
+            document.getElementById('setup-mp').style.display = 'none';
+            document.getElementById('chat-area').style.display = 'block';
+            client.subscribe('siri/multi/' + sala);
+            addLog("SISTEMA", "Conectado!");
+        });
+
+        client.on('message', (topic, msg) => {
+            try {
+                const data = JSON.parse(msg.toString());
+                if (data.id === meuNome) return;
+                
+                if (data.type === 'sync' || data.type === 'chat' || data.type === 'join') {
+                    handleData(data);
+                }
+            } catch (e) {}
+        });
+    };
+
+    function handleData(data) {
+        if (data.type === 'chat') {
+            addLog(data.id, data.text);
+            return;
+        }
+
+        const world = getScene();
+        if (!world) {
+            document.getElementById('status-sync').innerText = "⚠️ Erro: Cena não detectada!";
+            return;
+        } else {
+            document.getElementById('status-sync').innerText = "✅ Mundo 3D conectado!";
+        }
+
+        // Se o player remoto não existe, criamos agora!
+        if (!remotePlayers[data.id]) {
+            addLog("SISTEMA", "Avistei " + data.id);
+            // CRIAR CUBO NEON (Se o GLB falhar, isto aparece sempre)
+            const geo = new THREE.BoxGeometry(4, 8, 4);
+            const mat = new THREE.MeshBasicMaterial({ color: 0x00ffff, wireframe: true });
+            const box = new THREE.Mesh(geo, mat);
+            world.add(box);
+            remotePlayers[data.id] = box;
+
+            // Tenta carregar a Skin Real
+            if (window.loaderGLTF && (data.skin || window.defaultSkins)) {
+                let s = data.skin || (window.defaultSkins && window.defaultSkins[0].u);
+                window.loaderGLTF.load(s, (gltf) => {
+                    world.remove(box);
+                    remotePlayers[data.id] = gltf.scene;
+                    world.add(remotePlayers[data.id]);
+                });
+            }
+        }
+
+        // Atualizar posição (Sync)
+        if (data.type === 'sync' && remotePlayers[data.id]) {
+            remotePlayers[data.id].position.set(parseFloat(data.x), parseFloat(data.y), parseFloat(data.z));
+            remotePlayers[data.id].rotation.y = parseFloat(data.ry);
+        }
+    }
+
+    // Loop de envio de posição para o teu amigo
+    setInterval(() => {
+        if (client && client.connected && window.player) {
+            const p = window.player.position;
+            const r = window.player.rotation.y;
+            
+            client.publish('siri/multi/' + sala, JSON.stringify({
+                type: 'sync',
+                id: meuNome,
+                x: p.x.toFixed(2),
+                y: p.y.toFixed(2),
+                z: p.z.toFixed(2),
+                ry: r.toFixed(2),
+                skin: window.currentSkinUrl || ""
+            }));
+        }
+    }, 200);
+
+    function addLog(nick, msg) {
+        const logs = document.getElementById('chat-logs');
+        logs.innerHTML += `<div><b>${nick}:</b> ${msg}</div>`;
+        logs.scrollTop = logs.scrollHeight;
+    }
+
+    document.getElementById('btn-send').onclick = () => {
+        const inp = document.getElementById('chat-input');
+        if (inp.value && client) {
+            client.publish('siri/multi/' + sala, JSON.stringify({ type: 'chat', id: meuNome, text: inp.value }));
+            addLog("Eu", inp.value);
+            inp.value = "";
+        }
+    };
+}
