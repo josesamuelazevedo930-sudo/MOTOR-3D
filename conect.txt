@@ -1,0 +1,273 @@
+// ============================================
+// SIRI MULTIPLAYER V3 - CORREÇÃO RADICAL
+// ============================================
+
+If(document.getElementById('ui-multi')) document.getElementById('ui-multi').remove();
+
+const mqttScript = document.createElement('script');
+mqttScript.src = 'https://cdn.jsdelivr.net/npm/mqtt@4.1.0/dist/mqtt.min.js';
+document.head.appendChild(mqttScript);
+
+mqttScript.onload = () => {
+    // AGUARDA O THREE.JS ESTAR PRONTO
+    let attempts = 0;
+    const waitForThree = setInterval(() => {
+        attempts++;
+        if (typeof THREE !== 'undefined' && typeof scene !== 'undefined' && scene && typeof player !== 'undefined') {
+            clearInterval(waitForThree);
+            console.log("✅ Three.js detectado! Iniciando Multiplayer...");
+            setupMultiplayerCORRIGIDO();
+        }
+        if (attempts > 50) { // 5 segundos timeout
+            clearInterval(waitForThree);
+            alert("❌ Erro: Three.js não detectado");
+        }
+    }, 100);
+};
+
+function setupMultiplayerCORRIGIDO() {
+    // ========== INTERFACE ==========
+    const ui = document.createElement('div');
+    ui.id = 'ui-multi';
+    ui.style.cssText = `
+        position:absolute; top:10px; left:10px; z-index:10000; 
+        font-family:monospace; background:rgba(0,0,0,0.98); 
+        padding:15px; border-radius:12px; border:3px solid #ff00ff;
+        color:white; width:250px; box-shadow:0 0 20px #ff00ff;
+    `;
+    ui.innerHTML = `
+        <div style="text-align:center; margin-bottom:10px;">
+            <span style="color:#ff00ff; font-size:18px; font-weight:900;">⚡ MULTIPLAYER LIVE ⚡</span>
+        </div>
+        <div id="setup-mp">
+            <input id="mp-name" placeholder="SEU NOME" style="width:95%; padding:8px; margin:5px 0; background:#222; color:white; border:1px solid #ff00ff;">
+            <input id="mp-room" placeholder="SALA" value="1" style="width:95%; padding:8px; margin:5px 0; background:#222; color:white; border:1px solid #ff00ff;">
+            <button id="btn-con" style="width:100%; padding:12px; background:#ff00ff; color:black; border:none; font-weight:900; font-size:16px; cursor:pointer; border-radius:6px;">
+                🎮 CONECTAR AGORA 🎮
+            </button>
+        </div>
+        <div id="chat-area" style="display:none; margin-top:15px;">
+            <div id="chat-logs" style="height:80px; overflow-y:auto; font-size:12px; background:#111; color:#0ff; padding:5px; border:1px solid #ff00ff;"></div>
+            <div style="display:flex; margin-top:8px;">
+                <input type="text" id="chat-input" placeholder="Mensagem..." style="flex:1; padding:8px; background:#222; color:white; border:1px solid #ff00ff;">
+                <button id="btn-send" style="padding:8px 15px; background:#ff00ff; color:black; font-weight:bold; border:none;">ENVIAR</button>
+            </div>
+        </div>
+        <div id="player-count" style="margin-top:10px; color:#0ff; font-size:11px; text-align:center;">
+            👥 JOGADORES: 0
+        </div>
+    `;
+    document.body.appendChild(ui);
+
+    // ========== VARIÁVEIS GLOBAIS ==========
+    let client = null;
+    let sala = "1";
+    let meuNome = "Player_" + Math.floor(Math.random() * 999);
+    let remotePlayers = {};
+    
+    // CAPTURA A CENA E O PLAYER DO JOGO PRINCIPAL
+    const jogoScene = window.scene || scene;
+    const jogoPlayer = window.player || player;
+    
+    if (!jogoScene || !jogoPlayer) {
+        alert("❌ ERRO: Não encontrou o jogo! Reinicie a página.");
+        return;
+    }
+    
+    console.log("🎮 Cena encontrada:", jogoScene);
+    console.log("🎮 Player encontrado:", jogoPlayer);
+
+    // ========== COR DO PLAYER REMOTO ==========
+    function criarPlayerRemoto(id) {
+        // GRUPO para o jogador
+        const grupo = new THREE.Group();
+        
+        // CORPO (rosa choque ultra visível)
+        const corpo = new THREE.Mesh(
+            new THREE.BoxGeometry(3, 5, 2.5),
+            new THREE.MeshStandardMaterial({ 
+                color: 0xff44aa, 
+                emissive: 0x331122,
+                emissiveIntensity: 0.5,
+                roughness: 0.4,
+                metalness: 0.1
+            })
+        );
+        corpo.position.y = 2.5;
+        grupo.add(corpo);
+        
+        // CABEÇA
+        const cabeca = new THREE.Mesh(
+            new THREE.SphereGeometry(1.2, 8, 8),
+            new THREE.MeshStandardMaterial({ color: 0xffaa88, emissive: 0x331100, emissiveIntensity: 0.3 })
+        );
+        cabeca.position.y = 6;
+        grupo.add(cabeca);
+        
+        // OLHOS
+        const olhoMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0x444444 });
+        const pupilaMat = new THREE.MeshStandardMaterial({ color: 0x000000 });
+        
+        const olhoEsq = new THREE.Mesh(new THREE.SphereGeometry(0.25, 6), olhoMat);
+        olhoEsq.position.set(-0.4, 6.4, 1.1);
+        grupo.add(olhoEsq);
+        const pupilaEsq = new THREE.Mesh(new THREE.SphereGeometry(0.1, 4), pupilaMat);
+        pupilaEsq.position.set(-0.4, 6.4, 1.3);
+        grupo.add(pupilaEsq);
+        
+        const olhoDir = new THREE.Mesh(new THREE.SphereGeometry(0.25, 6), olhoMat);
+        olhoDir.position.set(0.4, 6.4, 1.1);
+        grupo.add(olhoDir);
+        const pupilaDir = new THREE.Mesh(new THREE.SphereGeometry(0.1, 4), pupilaMat);
+        pupilaDir.position.set(0.4, 6.4, 1.3);
+        grupo.add(pupilaDir);
+        
+        // NOME FLUTUANTE
+        const canvas = document.createElement('canvas');
+        canvas.width = 256;
+        canvas.height = 64;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = 'rgba(0,0,0,0.8)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.font = 'Bold 24px Arial';
+        ctx.fillStyle = '#ff00ff';
+        ctx.textAlign = 'center';
+        ctx.fillText(id, canvas.width/2, 40);
+        
+        const textura = new THREE.CanvasTexture(canvas);
+        const nomeLabel = new THREE.Mesh(
+            new THREE.PlaneGeometry(4, 1),
+            new THREE.MeshBasicMaterial({ map: textura, side: THREE.DoubleSide, transparent: true })
+        );
+        nomeLabel.position.y = 8;
+        nomeLabel.position.z = -0.5;
+        grupo.add(nomeLabel);
+        
+        grupo.position.set(0, 20, 0); // Posição inicial segura
+        
+        jogoScene.add(grupo);
+        return grupo;
+    }
+
+    // ========== CONEXÃO MQTT ==========
+    document.getElementById('btn-con').onclick = () => {
+        meuNome = document.getElementById('mp-name').value.trim() || "Player_" + Math.floor(Math.random() * 999);
+        sala = document.getElementById('mp-room').value.trim() || "1";
+        
+        // PREPARA UI
+        document.getElementById('setup-mp').style.display = 'none';
+        document.getElementById('chat-area').style.display = 'block';
+        
+        // CONECTA
+        const clientId = 'siri_' + Math.random().toString(36).substr(2, 8);
+        client = mqtt.connect('wss://broker.emqx.io:8084/mqtt', {
+            clientId: clientId,
+            clean: true,
+            reconnectPeriod: 1000
+        });
+
+        client.on('connect', () => {
+            addLog("✅ SISTEMA", "Conectado na sala " + sala);
+            client.subscribe('siri/multi/' + sala);
+            
+            // ANÚNCIA ENTRADA
+            client.publish('siri/multi/' + sala, JSON.stringify({
+                type: 'system',
+                id: 'SERVIDOR',
+                text: meuNome + ' entrou!'
+            }));
+        });
+
+        client.on('message', (topic, msg) => {
+            try {
+                const data = JSON.parse(msg.toString());
+                
+                // IGNORA PRÓPRIO ID
+                if (data.id === meuNome) return;
+                
+                if (data.type === 'sync') {
+                    // CRIA SE NÃO EXISTE
+                    if (!remotePlayers[data.id]) {
+                        remotePlayers[data.id] = criarPlayerRemoto(data.id);
+                        addLog("👤 ENTRADA", data.id + " apareceu!");
+                        atualizaContador();
+                    }
+                    
+                    // ATUALIZA POSIÇÃO
+                    if (remotePlayers[data.id]) {
+                        remotePlayers[data.id].position.x = parseFloat(data.x) || 0;
+                        remotePlayers[data.id].position.y = parseFloat(data.y) || 20;
+                        remotePlayers[data.id].position.z = parseFloat(data.z) || 0;
+                        remotePlayers[data.id].rotation.y = parseFloat(data.ry) || 0;
+                    }
+                }
+                
+                if (data.type === 'chat') {
+                    addLog(data.id, data.text);
+                }
+                
+                if (data.type === 'system') {
+                    addLog("📢 SISTEMA", data.text);
+                }
+                
+            } catch(e) {
+                console.log("Erro parsing:", e);
+            }
+        });
+        
+        client.on('error', (err) => {
+            addLog("❌ ERRO", "Falha na conexão");
+            console.log(err);
+        });
+    };
+
+    // ========== SEND PLAYER POSITION ==========
+    setInterval(() => {
+        if (client && client.connected && window.player) {
+            client.publish('siri/multi/' + sala, JSON.stringify({
+                type: 'sync',
+                id: meuNome,
+                x: window.player.position.x,
+                y: window.player.position.y,
+                z: window.player.position.z,
+                ry: window.player.rotation.y || 0
+            }));
+        }
+    }, 100); // 100ms = MAIS RÁPIDO
+
+    // ========== CHAT ==========
+    document.getElementById('btn-send').onclick = () => {
+        const inp = document.getElementById('chat-input');
+        if (inp.value.trim() && client) {
+            client.publish('siri/multi/' + sala, JSON.stringify({
+                type: 'chat',
+                id: meuNome,
+                text: inp.value.trim()
+            }));
+            addLog("Eu", inp.value.trim());
+            inp.value = "";
+        }
+    };
+
+    // ========== UTILITÁRIOS ==========
+    function addLog(quem, texto) {
+        const logs = document.getElementById('chat-logs');
+        if (!logs) return;
+        logs.innerHTML += `<div><span style="color:#ff00ff;">[${quem}]</span> ${texto}</div>`;
+        logs.scrollTop = logs.scrollHeight;
+    }
+    
+    function atualizaContador() {
+        const count = Object.keys(remotePlayers).length;
+        const el = document.getElementById('player-count');
+        if (el) el.innerHTML = `👥 JOGADORES NA SALA: ${count}`;
+    }
+    
+    // LIMPEZA DE PLAYERS DESCONECTADOS
+    setInterval(() => {
+        // Este script não detecta desconexão ainda
+        // Próxima versão: timeout
+    }, 5000);
+
+    addLog("🎮 SISTEMA", "Multiplayer carregado! Conecte-se.");
+}
