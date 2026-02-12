@@ -1,0 +1,172 @@
+// Script Multiplayer SIMPLES usando servidor público gratuito WebSocket (sem setup, só teste!)
+// Funciona para 2 jogadores na mesma "sala" (canal). Posições + chat broadcast.
+// Servidor: socketsbay.com (eco + broadcast para todos conectados no mesmo /demo/)
+
+function initPublicMultiplayer() {
+    // Adicionar botão ONLINE PUBLIC
+    var btn = document.createElement('button');
+    btn.id = 'op-btn';
+    btn.className = 'ui-btn';
+    btn.style.background = '#ff8800'; // laranja
+    btn.style.top = '240px';
+    btn.innerText = 'ONLINE PUBLIC';
+    btn.onclick = function() { tgl('op-panel'); };
+    document.body.appendChild(btn);
+
+    // Painel
+    var panel = document.createElement('div');
+    panel.id = 'op-panel';
+    panel.className = 'panel';
+    panel.style.top = '295px';
+    panel.style.display = 'none';
+    document.body.appendChild(panel);
+    panel.innerHTML = `
+        <p style="font-size:12px; margin-top:0;">NOME DA SALA (ex: sala1):</p>
+        <input type="text" id="public-room" placeholder="sala1">
+        <button class="opt" onclick="connectPublic()" style="background:#28a745;">CONECTAR</button>
+        <button class="opt" onclick="disconnectPublic()" style="background:#ff3333;">DESCONECTAR</button>
+        <hr style="border:0; border-top:1px solid #444; margin:10px 0;">
+        <div id="public-chat" style="max-height:180px; overflow-y:auto; font-size:12px; color:#fff; background:#222; padding:5px; border-radius:6px;"></div>
+        <input type="text" id="public-msg" placeholder="Digite mensagem">
+        <button class="opt" onclick="sendPublicMsg()" style="background:#007bff; margin-top:5px;">ENVIAR</button>
+    `;
+
+    let ws = null;
+    let room = '';
+    let playerName = 'Jogador' + Math.floor(Math.random() * 1000);
+    let otherPlayers = {}; // {id: {model, name}}
+    let connected = false;
+
+    window.connectPublic = function() {
+        room = document.getElementById('public-room').value.trim() || 'default';
+        if (connected) return;
+
+        // Use um endpoint público (mude o número para "canais" diferentes se quiser salas separadas)
+        const wsUrl = 'wss://socketsbay.com/wss/v2/1/demo/'; // ou troque 1 por 2,3... para salas diferentes
+
+        ws = new WebSocket(wsUrl);
+
+        ws.onopen = function() {
+            connected = true;
+            alert('Conectado ao servidor público! Sala: ' + room + '\nSeu nome: ' + playerName);
+            // Envia join
+            ws.send(JSON.stringify({ type: 'join', name: playerName, room: room }));
+        };
+
+        ws.onmessage = function(event) {
+            try {
+                const data = JSON.parse(event.data);
+                if (data.type === 'join') {
+                    if (data.name !== playerName) {
+                        addOtherPlayer(data.name);
+                        addChatMsg(data.name + ' entrou na sala!');
+                    }
+                } else if (data.type === 'move') {
+                    if (data.name !== playerName && otherPlayers[data.name]) {
+                        const op = otherPlayers[data.name].model;
+                        op.position.set(data.x, data.y, data.z);
+                        op.rotation.y = data.rot;
+                    }
+                } else if (data.type === 'msg') {
+                    addChatMsg(data.name + ': ' + data.text);
+                } else if (data.type === 'leave') {
+                    if (otherPlayers[data.name]) {
+                        scene.remove(otherPlayers[data.name].model);
+                        delete otherPlayers[data.name];
+                        addChatMsg(data.name + ' saiu.');
+                    }
+                }
+            } catch(e) {}
+        };
+
+        ws.onclose = function() {
+            connected = false;
+            alert('Desconectado do servidor público.');
+            clearOtherPlayers();
+        };
+
+        ws.onerror = function() {
+            alert('Erro ao conectar no servidor público. Tente outro endpoint ou verifique internet.');
+        };
+    };
+
+    window.disconnectPublic = function() {
+        if (ws) {
+            ws.send(JSON.stringify({ type: 'leave', name: playerName }));
+            ws.close();
+        }
+        connected = false;
+        clearOtherPlayers();
+        document.getElementById('public-chat').innerHTML = '';
+    };
+
+    window.sendPublicMsg = function() {
+        const input = document.getElementById('public-msg');
+        const text = input.value.trim();
+        if (!text || !connected || !ws) return;
+        ws.send(JSON.stringify({ type: 'msg', name: playerName, text: text, room: room }));
+        input.value = '';
+    };
+
+    function addChatMsg(msg) {
+        const div = document.getElementById('public-chat');
+        div.innerHTML += '<p style="margin:3px 0;">' + msg + '</p>';
+        div.scrollTop = div.scrollHeight;
+    }
+
+    function addOtherPlayer(name) {
+        if (otherPlayers[name]) return;
+        loaderGLTF.load(defaultSkins[0].u, function(gltf) {
+            var model = gltf.scene.clone();
+            var box = new THREE.Box3().setFromObject(model);
+            var s = 8 / (box.getSize(new THREE.Vector3()).y || 1);
+            model.scale.set(s, s, s);
+            model.position.set(0, 50, 0); // posição inicial
+            scene.add(model);
+            otherPlayers[name] = { model: model };
+            addChatMsg(name + ' conectado!');
+        });
+    }
+
+    function clearOtherPlayers() {
+        for (let key in otherPlayers) {
+            scene.remove(otherPlayers[key].model);
+        }
+        otherPlayers = {};
+    }
+
+    // Atualiza posição a cada \~200ms se movendo
+    const originalAnimate = animate;
+    window.animate = function() {
+        originalAnimate();
+        if (connected && ws && ws.readyState === WebSocket.OPEN && player) {
+            // Envia posição só se mudou (throttle simples)
+            if (!lastPosition.equals(player.position) || Math.abs(player.rotation.y - lastRotation) > 0.01) {
+                ws.send(JSON.stringify({
+                    type: 'move',
+                    name: playerName,
+                    room: room,
+                    x: player.position.x,
+                    y: player.position.y,
+                    z: player.position.z,
+                    rot: player.rotation.y
+                }));
+                lastPosition.copy(player.position);
+                lastRotation = player.rotation.y;
+            }
+        }
+    };
+
+    let lastPosition = new THREE.Vector3();
+    let lastRotation = 0;
+
+    window.addEventListener('beforeunload', function() {
+        if (connected && ws) {
+            ws.send(JSON.stringify({ type: 'leave', name: playerName }));
+            ws.close();
+        }
+    });
+}
+
+initPublicMultiplayer();
+alert("Script Multiplayer Público Carregado! Use o botão ONLINE PUBLIC para testar com 2 jogadores.");
