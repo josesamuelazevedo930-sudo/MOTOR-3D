@@ -1,0 +1,121 @@
+if(document.getElementById('ui-multi')) document.getElementById('ui-multi').remove();
+
+const mqttScript = document.createElement('script');
+mqttScript.src = 'https://cdn.jsdelivr.net/npm/mqtt@4.1.0/dist/mqtt.min.js';
+document.head.appendChild(mqttScript);
+
+mqttScript.onload = () => {
+    setupMultiplayerMQTT();
+};
+
+function setupMultiplayerMQTT() {
+    const ui = document.createElement('div');
+    ui.id = 'ui-multi';
+    ui.style.cssText = "position:absolute; top:10px; left:10px; z-index:10000; font-family:sans-serif; background:rgba(0,0,0,0.9); padding:12px; border-radius:10px; border:2px solid #00ffff; color:white; width:200px;";
+    ui.innerHTML = `
+        <b style="color:#00ffff;">SIRI DEBUG V12</b><br>
+        <div id="setup-mp">
+            <input id="mp-name" placeholder="Nome" style="width:90%; margin:5px 0;">
+            <input id="mp-room" placeholder="Sala" style="width:90%; margin:5px 0;">
+            <button id="btn-con" style="width:100%; padding:8px; background:green; color:white; border:none;">CONECTAR</button>
+        </div>
+        <div id="chat-area" style="display:none; margin-top:10px;">
+            <div id="chat-logs" style="height:80px; overflow-y:auto; font-size:10px; background:#000; padding:5px; color:#0f0;"></div>
+            <input type="text" id="chat-input" placeholder="Oi!" style="width:70%;">
+            <button id="btn-send">OK</button>
+        </div>
+    `;
+    document.body.appendChild(ui);
+
+    let client, sala, meuNome;
+    let remotePlayers = {};
+
+    // TENTA ACHAR A CENA CORRETA
+    let globalScene = (typeof scene !== 'undefined') ? scene : null;
+
+    document.getElementById('btn-con').onclick = () => {
+        meuNome = document.getElementById('mp-name').value || "User" + Math.floor(Math.random()*99);
+        sala = document.getElementById('mp-room').value || "1";
+        
+        client = mqtt.connect('wss://broker.emqx.io:8084/mqtt', { clientId: 'siri-' + Math.random().toString(36).substr(2, 5) });
+
+        client.on('connect', () => {
+            document.getElementById('setup-mp').style.display = 'none';
+            document.getElementById('chat-area').style.display = 'block';
+            client.subscribe('siri/multi/' + sala);
+            addLog("DEBUG", "Conectado. À procura de cena...");
+        });
+
+        client.on('message', (topic, msg) => {
+            try {
+                const data = JSON.parse(msg.toString());
+                if (data.id !== meuNome) {
+                    if (data.type === 'sync') handleRemoteSync(data);
+                    if (data.type === 'chat') addLog(data.id, data.text);
+                }
+            } catch (e) {}
+        });
+    };
+
+    function handleRemoteSync(data) {
+        // Se ainda não achamos a cena, tentamos de novo
+        if (!globalScene) {
+            if (typeof scene !== 'undefined') globalScene = scene;
+            else return; // Se não tem cena, não há onde desenhar
+        }
+
+        if (!remotePlayers[data.id]) {
+            addLog("DEBUG", "A criar player: " + data.id);
+            
+            // Tenta criar um cubo VERMELHO GIGANTE (5x10x5) para não falhar
+            const geo = new THREE.BoxGeometry(5, 10, 5);
+            const mat = new THREE.MeshBasicMaterial({color: 0xff0000, depthTest: false}); // depthTest false faz ver através das paredes
+            const cube = new THREE.Mesh(geo, mat);
+            cube.renderOrder = 999; // Força renderizar por cima
+            
+            remotePlayers[data.id] = cube;
+            globalScene.add(cube);
+
+            // Tenta carregar GLB se possível
+            if (window.loaderGLTF && data.skin) {
+                loaderGLTF.load(data.skin, (gltf) => {
+                    globalScene.remove(cube);
+                    remotePlayers[data.id] = gltf.scene;
+                    globalScene.add(remotePlayers[data.id]);
+                    addLog("DEBUG", "Skin carregada!");
+                });
+            }
+        }
+
+        // Atualiza posição
+        if (remotePlayers[data.id]) {
+            remotePlayers[data.id].position.set(parseFloat(data.x), parseFloat(data.y), parseFloat(data.z));
+            remotePlayers[data.id].rotation.y = parseFloat(data.ry);
+        }
+    }
+
+    setInterval(() => {
+        if (client && client.connected && window.player) {
+            client.publish('siri/multi/' + sala, JSON.stringify({
+                type: 'sync', id: meuNome,
+                x: player.position.x, y: player.position.y, z: player.position.z,
+                ry: player.rotation.y, skin: window.currentSkinUrl || ""
+            }));
+        }
+    }, 250);
+
+    function addLog(nick, msg) {
+        const logs = document.getElementById('chat-logs');
+        logs.innerHTML += `<div><b>${nick}:</b> ${msg}</div>`;
+        logs.scrollTop = logs.scrollHeight;
+    }
+
+    document.getElementById('btn-send').onclick = () => {
+        const inp = document.getElementById('chat-input');
+        if (inp.value && client) {
+            client.publish('siri/multi/' + sala, JSON.stringify({type: 'chat', id: meuNome, text: inp.value}));
+            addLog("Eu", inp.value);
+            inp.value = "";
+        }
+    };
+}
