@@ -1,0 +1,106 @@
+if(document.getElementById('ui-multi')) document.getElementById('ui-multi').remove();
+
+const mqttScript = document.createElement('script');
+mqttScript.src = 'https://cdn.jsdelivr.net/npm/mqtt@4.1.0/dist/mqtt.min.js';
+document.head.appendChild(mqttScript);
+
+mqttScript.onload = () => { setupV28(); };
+
+function setupV28() {
+    // --- PARTE 1: A INTERFACE DO CHAT ---
+    const ui = document.createElement('div');
+    ui.id = 'ui-multi';
+    ui.style.cssText = "position:absolute; top:10px; left:10px; z-index:10000; font-family:sans-serif; background:rgba(0,0,0,0.9); padding:10px; border-radius:10px; border:2px solid #00ffff; color:white; width:220px;";
+    ui.innerHTML = `
+        <b style="color:#00ffff;">SIRI V28 - MOTOR 3D</b><br>
+        <div id="mp-setup">
+            <input id="mp-room" placeholder="Nº da Sala" style="width:90%; margin:5px 0; background:#222; color:white; border:1px solid #444;">
+            <button id="btn-con" style="width:100%; padding:8px; background:green; color:white; border:none; font-weight:bold;">CONECTAR</button>
+        </div>
+        <div id="mp-active" style="display:none; margin-top:5px;">
+            <div id="chat-logs" style="height:70px; overflow:auto; font-size:10px; background:#000; color:#0f0; padding:5px; border:1px solid #333;"></div>
+            <div id="st-motor" style="font-size:10px; color:#ffff00; margin-top:5px;">Motor: Aguardando sinal...</div>
+        </div>
+    `;
+    document.body.appendChild(ui);
+
+    let client, sala, meuID = "P-" + Math.floor(Math.random()*999);
+    let cubosRemotos = {};
+
+    document.getElementById('btn-con').onclick = () => {
+        sala = document.getElementById('mp-room').value || "1";
+        client = mqtt.connect('wss://broker.emqx.io:8084/mqtt', { clientId: meuID });
+
+        client.on('connect', () => {
+            document.getElementById('mp-setup').style.display = 'none';
+            document.getElementById('mp-active').style.display = 'block';
+            client.subscribe('siri/motor/' + sala);
+            addLog("SISTEMA", "Chat e Motor Online!");
+        });
+
+        client.on('message', (topic, msg) => {
+            try {
+                const data = JSON.parse(msg.toString());
+                if (data.id !== meuID) {
+                    // --- PARTE 2: O MOTOR QUE ADICIONA O CUBO ---
+                    processarMotor3D(data);
+                }
+            } catch (e) {}
+        });
+    };
+
+    function processarMotor3D(data) {
+        // Tenta encontrar a cena do jogo de várias formas
+        const cena = window.scene || (window.player && window.player.parent);
+        
+        if (!cena) {
+            document.getElementById('st-motor').innerText = "Motor: Erro (Cena não achada)";
+            return;
+        }
+
+        // Se o cubo desse player não existe, o motor cria agora
+        if (!cubosRemotos[data.id]) {
+            addLog("MOTOR", "Construindo cubo para: " + data.id);
+            
+            // Geometria do Cubo (Tamanho de um humano no Three.js)
+            const geo = new THREE.BoxGeometry(4, 10, 4);
+            // Material Neon para ser impossível não ver
+            const mat = new THREE.MeshBasicMaterial({ color: 0x00ffff, wireframe: false });
+            const novoCubo = new THREE.Mesh(geo, mat);
+            
+            // Adiciona uma luz própria ao cubo para ele brilhar no mapa
+            const luz = new THREE.PointLight(0x00ffff, 10, 20);
+            novoCubo.add(luz);
+
+            cena.add(novoCubo);
+            cubosRemotos[data.id] = novoCubo;
+        }
+
+        // Atualiza a posição do cubo com as coordenadas vindas do chat
+        const alvo = cubosRemotos[data.id];
+        alvo.position.set(data.x, data.y, data.z);
+        if(data.ry) alvo.rotation.y = data.ry;
+        
+        document.getElementById('st-motor').innerText = "Motor: Recebendo X:" + Math.round(data.x);
+    }
+
+    // ENVIO DE DADOS (O que seu player está fazendo)
+    setInterval(() => {
+        if (client && client.connected && window.player) {
+            const p = window.player.position;
+            client.publish('siri/motor/' + sala, JSON.stringify({
+                id: meuID,
+                x: p.x,
+                y: p.y,
+                z: p.z,
+                ry: window.player.rotation.y
+            }));
+        }
+    }, 150);
+
+    function addLog(nick, msg) {
+        const logs = document.getElementById('chat-logs');
+        logs.innerHTML += `<div><b>${nick}:</b> ${msg}</div>`;
+        logs.scrollTop = logs.scrollHeight;
+    }
+}
