@@ -1,0 +1,219 @@
+// Script Multiplayer P2P com WebRTC usando Signaling Público Gratuito (wss://wss.getlost.ovh)
+// Para 2 jogadores: Um "Host" a sala, o outro "Join" a mesma sala.
+// Eles se veem e chat. Sem configuração! Usa STUN Google gratuito (P2P pode falhar em algumas redes, use TURN se precisar).
+// Painel pequeno superior direito. Teste em 2 abas/PC primeiro.
+
+let signaling = null;
+let peerConnection = null;
+let dataChannel = null;
+let isHost = false;
+let playerName = '';
+let room = '';
+let otherPlayerModel = null;
+let lastPosition = new THREE.Vector3();
+let lastRotation = 0;
+let updateInterval = 100; // Atualiza posição a cada 100ms se mudou
+
+function initP2PMultiplayer() {
+    // Painel pequeno
+    const style = document.createElement('style');
+    style.innerHTML = `
+        #p2p-panel { width: 250px; max-height: 50vh; top: 240px; right: 20px; }
+        #p2p-chat { max-height: 200px; overflow-y: auto; font-size: 12px; color: #fff; }
+    `;
+    document.head.appendChild(style);
+
+    // Botão ONLINE P2P
+    const btn = document.createElement('button');
+    btn.className = 'ui-btn';
+    btn.style.background = '#9932CC';
+    btn.style.top = '185px';
+    btn.innerText = 'P2P ONLINE';
+    btn.onclick = () => tgl('p2p-panel');
+    document.body.appendChild(btn);
+
+    // Painel
+    const panel = document.createElement('div');
+    panel.id = 'p2p-panel';
+    panel.className = 'panel';
+    panel.style.display = 'none';
+    document.body.appendChild(panel);
+    panel.innerHTML = `
+        <p style="font-size:12px; margin-top:0;">SEU NOME:</p>
+        <input type="text" id="p2p-name" placeholder="Jog1">
+        <p style="font-size:12px;">NOME DA SALA:</p>
+        <input type="text" id="p2p-room" placeholder="sala1">
+        <button class="opt" onclick="hostP2PRoom()" style="background:#28a745;">HOST SALA</button>
+        <button class="opt" onclick="joinP2PRoom()" style="background:#007bff;">JOIN SALA</button>
+        <button class="opt" onclick="disconnectP2P()" style="background:#ff3333;">DESCONECTAR</button>
+        <hr style="border:0; border-top:1px solid #444; margin:15px 0;">
+        <div id="p2p-chat"></div>
+        <input type="text" id="p2p-input" placeholder="Digite mensagem">
+        <button class="opt" onclick="sendP2PChat()" style="background:#28a745;">ENVIAR</button>
+    `;
+
+    // Funções globais
+    window.hostP2PRoom = function() {
+        playerName = document.getElementById('p2p-name').value.trim();
+        room = document.getElementById('p2p-room').value.trim();
+        if (!playerName || !room) return alert("Digite nome e sala!");
+        isHost = true;
+        connectSignaling();
+    };
+
+    window.joinP2PRoom = function() {
+        playerName = document.getElementById('p2p-name').value.trim();
+        room = document.getElementById('p2p-room').value.trim();
+        if (!playerName || !room) return alert("Digite nome e sala!");
+        isHost = false;
+        connectSignaling();
+    };
+
+    window.disconnectP2P = function() {
+        if (signaling) signaling.close();
+        if (peerConnection) peerConnection.close();
+        if (otherPlayerModel) scene.remove(otherPlayerModel);
+        otherPlayerModel = null;
+        document.getElementById('p2p-chat').innerHTML = '';
+        alert("Desconectado");
+    };
+
+    window.sendP2PChat = function() {
+        const input = document.getElementById('p2p-input');
+        const msg = input.value.trim();
+        if (!msg || !dataChannel) return;
+        dataChannel.send(JSON.stringify({type: 'chat', name: playerName, msg: msg}));
+        input.value = '';
+    };
+
+    function connectSignaling() {
+        signaling = new WebSocket('wss://wss.getlost.ovh');
+
+        signaling.onopen = () => {
+            signaling.send(JSON.stringify({type: 'join', room: room, name: playerName}));
+            addChat('Conectado ao signaling público! Esperando outro jogador...');
+            setupPeerConnection();
+        };
+
+        signaling.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            if (data.type === 'join' && data.name !== playerName) {
+                addChat(`${data.name} entrou na sala!`);
+            } else if (data.type === 'offer') {
+                handleOffer(data.offer);
+            } else if (data.type === 'answer') {
+                handleAnswer(data.answer);
+            } else if (data.type === 'ice') {
+                handleIce(data.ice);
+            }
+        };
+
+        signaling.onclose = () => addChat('Signaling desconectado.');
+    }
+
+    function setupPeerConnection() {
+        const config = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
+        peerConnection = new RTCPeerConnection(config);
+
+        peerConnection.onicecandidate = (event) => {
+            if (event.candidate) {
+                signaling.send(JSON.stringify({type: 'ice', ice: event.candidate, room: room}));
+            }
+        };
+
+        peerConnection.onconnectionstatechange = () => {
+            if (peerConnection.connectionState === 'connected') {
+                addChat('P2P conectado! Você vê o outro jogador.');
+            }
+        };
+
+        if (isHost) {
+            dataChannel = peerConnection.createDataChannel('game');
+            setupDataChannel(dataChannel);
+            peerConnection.createOffer().then(offer => {
+                peerConnection.setLocalDescription(offer);
+                signaling.send(JSON.stringify({type: 'offer', offer: offer, room: room}));
+            });
+        } else {
+            peerConnection.ondatachannel = (event) => setupDataChannel(event.channel);
+        }
+    }
+
+    function handleOffer(offer) {
+        if (!isHost) {
+            peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+            peerConnection.createAnswer().then(answer => {
+                peerConnection.setLocalDescription(answer);
+                signaling.send(JSON.stringify({type: 'answer', answer: answer, room: room}));
+            });
+        }
+    }
+
+    function handleAnswer(answer) {
+        if (isHost) {
+            peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+        }
+    }
+
+    function handleIce(ice) {
+        peerConnection.addIceCandidate(new RTCIceCandidate(ice));
+    }
+
+    function setupDataChannel(channel) {
+        dataChannel = channel;
+        dataChannel.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            if (data.type === 'chat') {
+                addChat(`${data.name}: ${data.msg}`);
+            } else if (data.type === 'position') {
+                if (!otherPlayerModel) {
+                    loadOtherPlayerModel(data.x, data.y, data.z, data.rot);
+                } else {
+                    otherPlayerModel.position.set(data.x, data.y, data.z);
+                    otherPlayerModel.rotation.y = data.rot;
+                }
+            }
+        };
+        dataChannel.onopen = () => addChat('Canal de dados aberto!');
+    }
+
+    function addChat(msg) {
+        const div = document.getElementById('p2p-chat');
+        div.innerHTML += `<p>${msg}</p>`;
+        div.scrollTop = div.scrollHeight;
+    }
+
+    function loadOtherPlayerModel(x, y, z, rot) {
+        loaderGLTF.load(defaultSkins[0].u, (gltf) => {
+            otherPlayerModel = gltf.scene.clone();
+            const box = new THREE.Box3().setFromObject(otherPlayerModel);
+            const s = 8 / (box.getSize(new THREE.Vector3()).y || 1);
+            otherPlayerModel.scale.set(s, s, s);
+            otherPlayerModel.position.set(x, y, z);
+            otherPlayerModel.rotation.y = rot;
+            scene.add(otherPlayerModel);
+        });
+    }
+
+    // Atualizar posição do jogador local para o outro (throttled)
+    const originalAnimate = animate;
+    window.animate = function() {
+        originalAnimate();
+        if (dataChannel && dataChannel.readyState === 'open' && player) {
+            const now = Date.now();
+            if (now - lastUpdate > updateInterval) {
+                const pos = player.position;
+                const rot = player.rotation.y;
+                if (!pos.equals(lastPosition) || rot !== lastRotation) {
+                    dataChannel.send(JSON.stringify({type: 'position', x: pos.x, y: pos.y, z: pos.z, rot: rot}));
+                    lastPosition.copy(pos);
+                    lastRotation = rot;
+                    lastUpdate = now;
+                }
+            }
+        }
+    };
+}
+
+initP2PMultiplayer();
+alert("Script P2P Online Carregado! Use HOST para criar sala, JOIN para entrar na mesma sala. Teste com 2 jogadores.");
