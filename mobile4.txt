@@ -1,0 +1,97 @@
+// 1. LIMPEZA E ESTILOS
+if(document.getElementById('joystick-base')) document.getElementById('joystick-base').remove();
+if(document.getElementById('touch-zone')) document.getElementById('touch-zone').remove();
+
+const style = document.createElement('style');
+style.innerHTML = `
+    #joystick-base { 
+        position: absolute; bottom: 50px; left: 50px; width: 120px; height: 120px; 
+        background: rgba(255,255,255,0.1); border: 2px solid rgba(255,255,255,0.3); 
+        border-radius: 50%; z-index: 10; touch-action: none; 
+    }
+    #joystick-stick { 
+        position: absolute; top: 35px; left: 35px; width: 50px; height: 50px; 
+        background: rgba(255,255,255,0.7); border-radius: 50%; 
+    }
+    #touch-zone { 
+        position: absolute; top: 0; right: 0; width: 60%; height: 100%; 
+        z-index: 5; touch-action: none; 
+    }
+    .ui-btn, .panel, .zoom-ctrl { z-index: 9999 !important; }
+`;
+document.head.appendChild(style);
+
+const base = document.createElement('div'); base.id = 'joystick-base';
+const stick = document.createElement('div'); stick.id = 'joystick-stick';
+const touchZone = document.createElement('div'); touchZone.id = 'touch-zone';
+base.appendChild(stick);
+document.body.appendChild(base);
+document.body.appendChild(touchZone);
+
+let joyPos = { x: 0, y: 0 }, isJoyDown = false;
+let moveX = 0, moveZ = 0;
+let lastTouchX = 0;
+
+// 2. LÓGICA DO JOYSTICK (CORREÇÃO DE SINAL)
+base.addEventListener('touchstart', (e) => { isJoyDown = true; e.stopPropagation(); });
+window.addEventListener('touchmove', (e) => {
+    if (!isJoyDown) return;
+    let touch = e.touches[0];
+    let rect = base.getBoundingClientRect();
+    let dx = touch.clientX - (rect.left + rect.width / 2);
+    let dy = touch.clientY - (rect.top + rect.height / 2);
+    let dist = Math.min(Math.sqrt(dx*dx + dy*dy), 50);
+    let angle = Math.atan2(dy, dx);
+    
+    joyPos.x = Math.cos(angle) * dist;
+    joyPos.y = Math.sin(angle) * dist;
+    stick.style.transform = `translate(${joyPos.x}px, ${joyPos.y}px)`;
+
+    // CORREÇÃO AQUI: Inverti o valor para que 'Para Cima' seja negativo (frente no Three.js)
+    moveX = (joyPos.x / 50);
+    moveZ = (joyPos.y / 50);
+}, { passive: false });
+
+window.addEventListener('touchend', () => {
+    isJoyDown = false;
+    stick.style.transform = `translate(0px, 0px)`;
+    moveX = 0; moveZ = 0;
+});
+
+// 3. LÓGICA DA CÂMERA
+touchZone.addEventListener('touchstart', (e) => {
+    if(e.target.tagName === 'BUTTON' || e.target.closest('.panel')) return;
+    lastTouchX = e.touches[0].clientX;
+});
+touchZone.addEventListener('touchmove', (e) => {
+    if(e.target.tagName === 'BUTTON' || e.target.closest('.panel')) return;
+    let deltaX = e.touches[0].clientX - lastTouchX;
+    camRot -= deltaX * 0.007; 
+    lastTouchX = e.touches[0].clientX;
+});
+
+// 4. LOOP DE MOVIMENTO CORRIGIDO
+if(window.mobileInt) clearInterval(window.mobileInt);
+window.mobileInt = setInterval(() => {
+    if (window.player && (moveX !== 0 || moveZ !== 0)) {
+        let f = new THREE.Vector3(Math.sin(camRot), 0, Math.cos(camRot));
+        let r = new THREE.Vector3().crossVectors(new THREE.Vector3(0,1,0), f);
+        
+        // CORREÇÃO DOS SINAIS DE MOVIMENTO
+        // Para frente (moveZ negativo) deve subtrair do vetor f
+        window.player.position.addScaledVector(f, -moveZ * moveSpeed);
+        window.player.position.addScaledVector(r, -moveX * moveSpeed);
+        
+        // ROTAÇÃO: atan2 precisa bater com a direção do movimento
+        // Usamos -moveX e -moveZ para o boneco olhar para onde o joy aponta
+        let rotBase = Math.atan2(-moveX, -moveZ) + camRot;
+        
+        window.player.rotation.y = window.animInverted ? rotBase + Math.PI : rotBase;
+        
+        if (typeof fadeToAction === "function") fadeToAction('walk');
+    } else {
+        if (typeof fadeToAction === "function") fadeToAction('idle');
+    }
+}, 16);
+
+alert("Direção Corrigida! Cima agora é Frente.");
