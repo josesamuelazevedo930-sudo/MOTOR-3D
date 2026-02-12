@@ -1,0 +1,90 @@
+// 1. LIMPEZA DE SCRIPTS ANTERIORES
+if(window.timerSiri) clearInterval(window.timerSiri);
+if(document.getElementById('chef-hud')) document.getElementById('chef-hud').remove();
+
+// 2. HUD DE TEXTO (SIMPLES)
+const hud = document.createElement('div');
+hud.id = 'chef-hud';
+hud.style.cssText = "position:absolute; top:10px; left:10px; color:white; background:rgba(0,0,0,0.8); padding:10px; font-family:monospace; z-index:10000; border:1px solid #0ff;";
+hud.innerHTML = `<b style="color:#0ff">SIRI CHEF 3D</b><br><div id="m-money">$$: 0</div><div id="m-status">Marque os locais (Use Teclas)</div>`;
+document.body.appendChild(hud);
+
+// 3. LOGICA DE OBJETOS 3D (INDICADORES)
+let marcadorChapa = null;
+let marcadorBalcao = null;
+let moedas = 0;
+let jobFase = "CONFIG"; // CONFIG, PEGAR, COZINHAR, ENTREGAR
+
+function criarCaixa(cor) {
+    const geo = new THREE.BoxGeometry(2, 4, 2);
+    const mat = new THREE.MeshBasicMaterial({ color: cor, wireframe: true });
+    const mesh = new THREE.Mesh(geo, mat);
+    window.scene.add(mesh);
+    return mesh;
+}
+
+// 4. SISTEMA DE MARCAÇÃO POR TECLADO (Mais seguro que botões na TV)
+// Pressione 'P' para marcar Chapa | Pressione 'L' para marcar Balcão
+window.addEventListener('keydown', (e) => {
+    const p = window.player || player;
+    if(!p) return;
+
+    if(e.key.toLowerCase() === 'p') { // P de Prancha/Chapa
+        if(marcadorChapa) window.scene.remove(marcadorChapa);
+        marcadorChapa = criarCaixa(0xffa500); // Laranja
+        marcadorChapa.position.copy(p.position);
+        document.getElementById('m-status').innerText = "CHAPA OK! (Vá ao Balcão)";
+        checarInicio();
+    }
+    if(e.key.toLowerCase() === 'l') { // L de Lanchonete/Balcão
+        if(marcadorBalcao) window.scene.remove(marcadorBalcao);
+        marcadorBalcao = criarCaixa(0x00ff00); // Verde
+        marcadorBalcao.position.copy(p.position);
+        document.getElementById('m-status').innerText = "BALCÃO OK! (Vá à Chapa)";
+        checarInicio();
+    }
+});
+
+function checarInicio() {
+    if(marcadorChapa && marcadorBalcao) {
+        jobFase = "PEGAR";
+        document.getElementById('m-status').innerText = "TURNO INICIADO!";
+    }
+}
+
+// 5. LOOP DE JOGO
+window.timerSiri = setInterval(() => {
+    const p = window.player || player;
+    if(!p || jobFase === "CONFIG") return;
+
+    let dChapa = p.position.distanceTo(marcadorChapa.position);
+    let dBalcao = p.position.distanceTo(marcadorBalcao.position);
+    const status = document.getElementById('m-status');
+
+    if(jobFase === "PEGAR" && dBalcao < 5) {
+        jobFase = "COZINHAR";
+        status.innerText = "PEDIDO PEGO! VÁ PARA A CHAPA (LARANJA)";
+        status.style.color = "#ffa500";
+    }
+
+    if(jobFase === "COZINHAR" && dChapa < 3) {
+        status.innerText = "COZINHANDO... AGUARDE 5s";
+        setTimeout(() => {
+            if(p.position.distanceTo(marcadorChapa.position) < 5) {
+                jobFase = "ENTREGAR";
+                status.innerText = "PRONTO! LEVE AO BALCÃO (VERDE)";
+                status.style.color = "#00ff00";
+            }
+        }, 5000);
+    }
+
+    if(jobFase === "ENTREGAR" && dBalcao < 5) {
+        moedas += 50;
+        document.getElementById('m-money').innerText = "$$: " + moedas;
+        jobFase = "PEGAR";
+        status.innerText = "ENTREGUE! +$50. PRÓXIMO PEDIDO...";
+        status.style.color = "white";
+    }
+}, 500);
+
+alert("SIRI CHEF ATIVO!\n1. Vá na chapa e aperte P\n2. Vá no balcão e aperte L");
