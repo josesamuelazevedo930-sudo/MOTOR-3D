@@ -1,0 +1,136 @@
+// MODO SIRI CHEF - VERSÃO MOTOR PRO
+(function() {
+    // 1. Limpeza de sessões antigas
+    if (window.siriTimer) clearInterval(window.siriTimer);
+    if (document.getElementById('chef-hud')) document.getElementById('chef-hud').remove();
+
+    // 2. Variáveis de Estado
+    let chefData = {
+        moedas: parseInt(localStorage.getItem('siriMoedas')) || 0,
+        posChapa: null,
+        posBalcao: null,
+        marcadorC: null,
+        marcadorB: null,
+        estado: "CONFIG", // CONFIG, BUSCAR, FRITAR, ENTREGAR
+        progresso: 0
+    };
+
+    // 3. Interface (HUD)
+    const hud = document.createElement('div');
+    hud.id = 'chef-hud';
+    hud.style.cssText = "position:absolute; left:20px; top:200px; width:180px; background:rgba(0,0,0,0.85); border:2px solid #00ffff; border-radius:10px; padding:12px; color:white; font-family:sans-serif; z-index:1000; box-shadow:0 0 10px #00ffff;";
+    hud.innerHTML = `
+        <div style="text-align:center; color:#00ffff; font-weight:bold; border-bottom:1px solid #444; margin-bottom:8px;">SIRI CHEF PRO</div>
+        <div id="chef-money" style="color:#28a745; font-weight:bold; text-align:center; font-size:18px;">$ ${chefData.moedas}</div>
+        <div id="chef-msg" style="font-size:11px; margin:8px 0; text-align:center;">Configure os locais para começar!</div>
+        <div id="chef-bar-cont" style="width:100%; height:8px; background:#333; display:none; border-radius:4px; overflow:hidden;">
+            <div id="chef-bar-fill" style="width:0%; height:100%; background:#00ff00;"></div>
+        </div>
+        <button id="btn-set-chapa" style="width:100%; margin-top:8px; background:#ff8800; border:none; color:white; padding:5px; border-radius:4px; font-weight:bold;">MARCAR CHAPA</button>
+        <button id="btn-set-balcao" style="width:100%; margin-top:5px; background:#007bff; border:none; color:white; padding:5px; border-radius:4px; font-weight:bold;">MARCAR BALCÃO</button>
+    `;
+    document.body.appendChild(hud);
+
+    // 4. Criar Marcadores 3D (Como no seu motor)
+    function criarLuz(cor, nome) {
+        const grupo = new THREE.Group();
+        const geo = new THREE.CylinderGeometry(2, 2, 40, 16);
+        const mat = new THREE.MeshBasicMaterial({ color: cor, transparent: true, opacity: 0.3, wireframe: true });
+        const mesh = new THREE.Mesh(geo, mat);
+        grupo.add(mesh);
+        
+        // Label flutuante (Estilo o seu Multiplayer)
+        const canvas = document.createElement('canvas');
+        canvas.width = 256; canvas.height = 64;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#' + cor.toString(16).padStart(6, '0');
+        ctx.font = 'bold 35px Arial'; ctx.textAlign = 'center';
+        ctx.fillText(nome, 128, 45);
+        const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(canvas) }));
+        sprite.scale.set(10, 2.5, 1); sprite.position.y = 25;
+        grupo.add(sprite);
+
+        scene.add(grupo);
+        return grupo;
+    }
+
+    // 5. Funções dos Botões
+    document.getElementById('btn-set-chapa').onclick = () => {
+        if(chefData.marcadorC) scene.remove(chefData.marcadorC);
+        chefData.marcadorC = criarLuz(0xff8800, "CHAPA");
+        chefData.marcadorC.position.copy(player.position);
+        chefData.posChapa = player.position.clone();
+        document.getElementById('chef-msg').innerText = "Chapa Configurada!";
+        verificarInicio();
+    };
+
+    document.getElementById('btn-set-balcao').onclick = () => {
+        if(chefData.marcadorB) scene.remove(chefData.marcadorB);
+        chefData.marcadorB = criarLuz(0x007bff, "BALCÃO");
+        chefData.marcadorB.position.copy(player.position);
+        chefData.posBalcao = player.position.clone();
+        document.getElementById('chef-msg').innerText = "Balcão Configurado!";
+        verificarInicio();
+    };
+
+    function verificarInicio() {
+        if(chefData.posChapa && chefData.posBalcao) {
+            chefData.estado = "BUSCAR";
+            document.getElementById('chef-msg').innerText = "VÁ AO BALCÃO PEGAR O PEDIDO!";
+        }
+    }
+
+    // 6. Loop Principal (Baseado no clock do seu motor)
+    window.siriTimer = setInterval(() => {
+        if(!player || chefData.estado === "CONFIG") return;
+
+        const distChapa = player.position.distanceTo(chefData.posChapa);
+        const distBalcao = player.position.distanceTo(chefData.posBalcao);
+        const msg = document.getElementById('chef-msg');
+        const barCont = document.getElementById('chef-bar-cont');
+        const barFill = document.getElementById('chef-bar-fill');
+
+        // Lógica de Fases
+        if(chefData.estado === "BUSCAR" && distBalcao < 8) {
+            chefData.estado = "FRITAR";
+            msg.innerText = "PEDIDO PEGO! LEVE À CHAPA!";
+            msg.style.color = "#ff8800";
+        }
+
+        if(chefData.estado === "FRITAR" && distChapa < 8) {
+            chefData.estado = "COZINHANDO";
+            barCont.style.display = "block";
+            chefData.progresso = 0;
+        }
+
+        if(chefData.estado === "COZINHANDO") {
+            if(distChapa > 10) { // Se sair de perto, cancela
+                chefData.estado = "FRITAR";
+                barCont.style.display = "none";
+                msg.innerText = "VOLTE PARA A CHAPA!";
+                return;
+            }
+            chefData.progresso += 2;
+            barFill.style.width = chefData.progresso + "%";
+            msg.innerText = "FRITANDO: " + chefData.progresso + "%";
+
+            if(chefData.progresso >= 100) {
+                chefData.estado = "ENTREGAR";
+                barCont.style.display = "none";
+                msg.innerText = "PRONTO! LEVE AO BALCÃO!";
+                msg.style.color = "#00ff00";
+            }
+        }
+
+        if(chefData.estado === "ENTREGAR" && distBalcao < 8) {
+            chefData.moedas += 50;
+            localStorage.setItem('siriMoedas', chefData.moedas);
+            document.getElementById('chef-money').innerText = "$ " + chefData.moedas;
+            chefData.estado = "BUSCAR";
+            msg.innerText = "ENTREGUE! +$50. BUSQUE O PRÓXIMO!";
+            msg.style.color = "#00ffff";
+        }
+    }, 200);
+
+    alert("MODO SIRI CHEF CARREGADO!\n\n1. Vá ao fogão e clique em 'MARCAR CHAPA'\n2. Vá ao balcão e clique em 'MARCAR BALCÃO'\n3. Comece a ganhar moedas!");
+})();
