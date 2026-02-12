@@ -1,0 +1,218 @@
+// MQTT Multiplayer REAL com broker público EMQX (2026)
+// Posição + chat sincronizam entre todos na mesma sala
+// Logs extras para depurar por que chat ou player não aparece
+
+function initMQTTMulti() {
+    // Carrega MQTT.js do jsDelivr (mais estável em alguns casos)
+    const script = document.createElement('script');
+    script.src = 'https://cdn.jsdelivr.net/npm/mqtt@5.8.0/dist/mqtt.min.js';
+    script.onload = () => {
+        console.log('MQTT.js carregado com sucesso');
+        alert('MQTT carregado! Clique no botão MQTT FIX e conecte.');
+        setupMQTTInterface();
+    };
+    script.onerror = () => {
+        console.error('Falha ao carregar MQTT.js');
+        alert('Erro: Não conseguiu carregar a biblioteca MQTT. Navegador da TV pode estar bloqueando o CDN.');
+    };
+    document.head.appendChild(script);
+}
+
+let mqttClient = null;
+let playerId = Math.random().toString(36).substr(2, 9);
+let playerName = '';
+let room = '';
+let connected = false;
+let otherPlayers = {}; // id → THREE.Object3D (modelo)
+let lastPos = new THREE.Vector3();
+let lastRot = 0;
+let lastUpdateTime = 0;
+
+function setupMQTTInterface() {
+    // Botão no topo direito
+    const btn = document.createElement('button');
+    btn.className = 'ui-btn';
+    btn.style.background = '#28a745';
+    btn.style.top = '185px';
+    btn.innerText = 'MQTT FIX';
+    btn.onclick = () => tgl('mqtt-fix-panel');
+    document.body.appendChild(btn);
+
+    // Painel pequeno
+    const panel = document.createElement('div');
+    panel.id = 'mqtt-fix-panel';
+    panel.className = 'panel';
+    panel.style.top = '240px';
+    panel.style.width = '260px';
+    panel.style.maxHeight = '55vh';
+    panel.style.display = 'none';
+    document.body.appendChild(panel);
+
+    panel.innerHTML = `
+        <p style="font-size:12px; margin:0 0 5px;">Seu Nome:</p>
+        <input type="text" id="mqtt-name" placeholder="Samuel" style="width:100%; font-size:12px;">
+        <p style="font-size:12px; margin:8px 0 5px;">Sala (qualquer nome):</p>
+        <input type="text" id="mqtt-room" placeholder="sala123" style="width:100%; font-size:12px;">
+        <button class="opt" onclick="connectMQTT()" style="background:#28a745; font-size:12px; margin:8px 0;">CONECTAR</button>
+        <button class="opt" onclick="disconnectMQTT()" style="background:#ff3333; font-size:12px;">DESCONECTAR</button>
+        <hr style="border:0; border-top:1px solid #444; margin:10px 0;">
+        <div id="mqtt-log" style="max-height:220px; overflow-y:auto; font-size:11px; background:#000; color:#0f0; padding:8px; border-radius:6px; margin-bottom:8px;"></div>
+        <input type="text" id="mqtt-msg" placeholder="Digite mensagem" style="width:70%; font-size:11px;">
+        <button class="opt" onclick="sendMQTTChat()" style="width:25%; background:#007bff; font-size:11px;">ENVIAR</button>
+    `;
+}
+
+window.connectMQTT = function() {
+    if (connected) return;
+
+    playerName = document.getElementById('mqtt-name').value.trim() || 'Jogador' + Math.floor(Math.random()*1000);
+    room = document.getElementById('mqtt-room').value.trim() || 'default';
+    const topic = `siri-game/${room}`;
+
+    logMQTT('Tentando conectar ao broker EMQX...');
+    logMQTT('Sala: ' + room + ' | Nome: ' + playerName);
+
+    mqttClient = mqtt.connect('wss://broker.emqx.io:8084/mqtt', {
+        clientId: 'siri-' + playerId,
+        keepalive: 60,
+        reconnectPeriod: 3000,
+        connectTimeout: 10000
+    });
+
+    mqttClient.on('connect', () => {
+        connected = true;
+        logMQTT('✅ CONECTADO ao broker público EMQX!');
+        mqttClient.subscribe(topic);
+        logMQTT('Inscrito no tópico: ' + topic);
+        // Anuncia entrada
+        mqttClient.publish(topic, JSON.stringify({
+            type: 'join',
+            id: playerId,
+            name: playerName
+        }));
+    });
+
+    mqttClient.on('message', (receivedTopic, message) => {
+        const str = message.toString();
+        logMQTT('Mensagem recebida: ' + str);
+
+        try {
+            const data = JSON.parse(str);
+            if (data.id === playerId) return; // ignora próprio
+
+            if (data.type === 'join') {
+                logMQTT(`👤 ${data.name} entrou na sala!`);
+                createOtherPlayer(data.id);
+            } else if (data.type === 'position') {
+                updateOtherPlayer(data.id, data.x, data.y, data.z, data.rot);
+            } else if (data.type === 'chat') {
+                addChatMessage(`${data.name}: ${data.text}`);
+            }
+        } catch (e) {
+            logMQTT('Erro ao parsear mensagem: ' + e.message);
+        }
+    });
+
+    mqttClient.on('error', (err) => {
+        logMQTT('❌ Erro na conexão MQTT: ' + (err.message || 'desconhecido'));
+    });
+
+    mqttClient.on('close', () => {
+        connected = false;
+        logMQTT('Conexão fechada.');
+    });
+
+    mqttClient.on('reconnect', () => {
+        logMQTT('Tentando reconectar...');
+    });
+};
+
+window.disconnectMQTT = function() {
+    if (mqttClient) mqttClient.end();
+    connected = false;
+    Object.keys(otherPlayers).forEach(id => {
+        scene.remove(otherPlayers[id]);
+        delete otherPlayers[id];
+    });
+    document.getElementById('mqtt-log').innerHTML = '';
+    logMQTT('Desconectado.');
+};
+
+window.sendMQTTChat = function() {
+    if (!connected || !mqttClient) return;
+    const text = document.getElementById('mqtt-msg').value.trim();
+    if (!text) return;
+    const topic = `siri-game/${room}`;
+    mqttClient.publish(topic, JSON.stringify({
+        type: 'chat',
+        id: playerId,
+        name: playerName,
+        text: text
+    }));
+    document.getElementById('mqtt-msg').value = '';
+    addChatMessage('Você: ' + text);
+};
+
+function logMQTT(msg) {
+    const div = document.getElementById('mqtt-log');
+    if (!div) return;
+    div.innerHTML += `<p style="margin:3px 0;">${msg}</p>`;
+    div.scrollTop = div.scrollHeight;
+}
+
+function addChatMessage(msg) {
+    logMQTT(msg);
+}
+
+function createOtherPlayer(id) {
+    if (otherPlayers[id]) return;
+    loaderGLTF.load(defaultSkins[0].u, (gltf) => {
+        const model = gltf.scene.clone();
+        const box = new THREE.Box3().setFromObject(model);
+        const s = 8 / (box.getSize(new THREE.Vector3()).y || 1);
+        model.scale.set(s, s, s);
+        model.position.set(0, 50, 0);
+        scene.add(model);
+        otherPlayers[id] = model;
+        logMQTT('Modelo de outro jogador criado (id: ' + id.slice(0,6) + '...)');
+    });
+}
+
+function updateOtherPlayer(id, x, y, z, rot) {
+    const model = otherPlayers[id];
+    if (model) {
+        model.position.set(x, y, z);
+        model.rotation.y = rot;
+    }
+}
+
+// Atualiza posição (throttle para não floodar)
+const originalAnimate = animate;
+window.animate = function() {
+    originalAnimate();
+    if (connected && mqttClient && player && mqttClient.connected) {
+        const now = performance.now();
+        if (now - lastUpdateTime > 150) {  // 150ms = \~6-7 updates/seg
+            const pos = player.position;
+            const rot = player.rotation.y;
+            if (!pos.equals(lastPos) || Math.abs(rot - lastRot) > 0.05) {
+                const topic = `siri-game/${room}`;
+                mqttClient.publish(topic, JSON.stringify({
+                    type: 'position',
+                    id: playerId,
+                    x: pos.x,
+                    y: pos.y,
+                    z: pos.z,
+                    rot: rot
+                }));
+                logMQTT('Posição enviada');
+                lastPos.copy(pos);
+                lastRot = rot;
+                lastUpdateTime = now;
+            }
+        }
+    }
+};
+
+initMQTTMulti();
+alert("Script MQTT FIX atualizado! Clique MQTT FIX → CONECTE nos dois lados na mesma sala. Veja o log verde no painel para depurar.");
