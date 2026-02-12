@@ -1,0 +1,107 @@
+if(document.getElementById('ui-multi')) document.getElementById('ui-multi').remove();
+
+const mqttScript = document.createElement('script');
+mqttScript.src = 'https://cdn.jsdelivr.net/npm/mqtt@4.1.0/dist/mqtt.min.js';
+document.head.appendChild(mqttScript);
+
+mqttScript.onload = () => { setupV21(); };
+
+function setupV21() {
+    const ui = document.createElement('div');
+    ui.id = 'ui-multi';
+    ui.style.cssText = "position:absolute; top:10px; left:10px; z-index:10000; font-family:sans-serif; background:rgba(0,0,0,0.9); padding:12px; border-radius:10px; border:2px solid #007bff; color:white; width:200px;";
+    ui.innerHTML = `
+        <b style="color:#007bff;">SIRI MULTI V21</b><br>
+        <div id="mp-setup">
+            <input id="mp-room" placeholder="Nº da Sala" style="width:90%; margin:5px 0; background:#222; color:white; border:1px solid #444; padding:5px;">
+            <button id="btn-con" style="width:100%; padding:8px; background:#28a745; color:white; border:none; font-weight:bold; border-radius:5px;">ENTRAR NO JOGO</button>
+        </div>
+        <div id="mp-active" style="display:none;">
+            <div id="mp-status" style="font-size:11px; color:#0f0; margin-bottom:5px;">Conectado!</div>
+            <div id="chat-logs" style="height:70px; overflow-y:auto; font-size:10px; background:#000; color:#0f0; padding:5px; border-radius:5px;"></div>
+        </div>
+    `;
+    document.body.appendChild(ui);
+
+    let client, sala, meuID = "TV-" + Math.floor(Math.random()*999);
+    let remotePlayers = {};
+    let teleported = false;
+    const SKIN_PADRAO = "https://threejs.org/examples/models/gltf/Soldier.glb";
+
+    document.getElementById('btn-con').onclick = () => {
+        sala = document.getElementById('mp-room').value || "1";
+        client = mqtt.connect('wss://broker.emqx.io:8084/mqtt', { clientId: meuID });
+
+        client.on('connect', () => {
+            document.getElementById('mp-setup').style.display = 'none';
+            document.getElementById('mp-active').style.display = 'block';
+            client.subscribe('siri/multi/' + sala);
+        });
+
+        client.on('message', (topic, msg) => {
+            try {
+                const data = JSON.parse(msg.toString());
+                if (data.id !== meuID && data.type === 'sync') handleSync(data);
+            } catch (e) {}
+        });
+    };
+
+    function handleSync(data) {
+        if (!window.scene || !window.loaderGLTF) return;
+
+        // 1. TELEPORTE AUTOMÁTICO PARA O AMIGO
+        if (!teleported && window.player) {
+            window.player.position.set(parseFloat(data.x), parseFloat(data.y) + 2, parseFloat(data.z));
+            teleported = true;
+            addLog("SISTEMA", "Você foi levado ao seu amigo!");
+        }
+
+        // 2. CRIAR O MODELO SOLDADO PARA O AMIGO
+        if (!remotePlayers[data.id]) {
+            // Marcador temporário (Cubo) para evitar delay
+            const geo = new THREE.BoxGeometry(2, 5, 2);
+            const mat = new THREE.MeshBasicMaterial({ color: 0x00ffff, wireframe: true });
+            const temp = new THREE.Mesh(geo, mat);
+            window.scene.add(temp);
+            remotePlayers[data.id] = temp;
+
+            // Carrega o Soldado oficial do seu jogo
+            window.loaderGLTF.load(SKIN_PADRAO, (gltf) => {
+                window.scene.remove(temp);
+                const model = gltf.scene;
+                
+                // Aplica a escala exata do seu código
+                let box = new THREE.Box3().setFromObject(model);
+                let s = 8 / (box.getSize(new THREE.Vector3()).y || 1);
+                model.scale.set(s, s, s);
+                
+                window.scene.add(model);
+                remotePlayers[data.id] = model;
+                addLog("SISTEMA", "Amigo apareceu!");
+            });
+        }
+
+        // 3. ATUALIZAR MOVIMENTO
+        if (remotePlayers[data.id]) {
+            remotePlayers[data.id].position.set(parseFloat(data.x), parseFloat(data.y), parseFloat(data.z));
+            remotePlayers[data.id].rotation.y = parseFloat(data.ry);
+        }
+    }
+
+    // Enviar sua posição constante
+    setInterval(() => {
+        if (client && client.connected && window.player) {
+            client.publish('siri/multi/' + sala, JSON.stringify({
+                type: 'sync', id: meuID,
+                x: window.player.position.x, y: window.player.position.y, z: window.player.position.z,
+                ry: window.player.rotation.y
+            }));
+        }
+    }, 150);
+
+    function addLog(nick, msg) {
+        const logs = document.getElementById('chat-logs');
+        logs.innerHTML += `<div><b>${nick}:</b> ${msg}</div>`;
+        logs.scrollTop = logs.scrollHeight;
+    }
+}
