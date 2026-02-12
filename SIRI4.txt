@@ -1,0 +1,245 @@
+// ============================================
+// MODO COZINHEIRO - VERSÃO PAINEL
+// COLE ISSO NO ARQUIVO .txt E IMPORTE!
+// ============================================
+
+// 1. LIMPEZA
+if(window.chefAtivo) {
+    if(window.chefTimer) clearInterval(window.chefTimer);
+    if(window.chefMarcadorChapa) window.scene?.remove(window.chefMarcadorChapa);
+    if(window.chefMarcadorBalcao) window.scene?.remove(window.chefMarcadorBalcao);
+    if(document.getElementById('chef-panel')) document.getElementById('chef-panel').remove();
+}
+
+// 2. CAPTURAR CENA E PLAYER DO JOGO PRINCIPAL
+let cenaJogo = null;
+let jogador = null;
+
+// TENTA CAPTURAR DE TODAS AS FORMAS POSSÍVEIS
+if(typeof scene !== 'undefined') cenaJogo = scene;
+if(typeof player !== 'undefined') jogador = player;
+if(window.scene) cenaJogo = window.scene;
+if(window.player) jogador = window.player;
+
+// 3. SE NÃO ACHOU, TENTA NO PRÓXIMO FRAME
+if(!cenaJogo || !jogador) {
+    alert("⚠️ AGUARDE... INJETANDO NO JOGO!");
+    
+    // INJETA DIRETO NO CÓDIGO DO JOGO
+    const script = document.createElement('script');
+    script.innerHTML = `
+        // CAPTURA AS VARIÁVEIS DO ESCOPO LOCAL
+        window.minhaCena = scene;
+        window.meuPlayer = player;
+        
+        // INICIA O MODO COZINHEIRO
+        if(window.minhaCena && window.meuPlayer) {
+            window.iniciarCozinhaFinal(window.minhaCena, window.meuPlayer);
+        }
+    `;
+    document.head.appendChild(script);
+    
+    // AGUARDA E TENTA NOVAMENTE
+    setTimeout(() => {
+        if(window.minhaCena && window.meuPlayer) {
+            window.iniciarCozinhaFinal(window.minhaCena, window.meuPlayer);
+        }
+    }, 1000);
+} else {
+    window.iniciarCozinhaFinal(cenaJogo, jogador);
+}
+
+// 4. FUNÇÃO PRINCIPAL (GARANTIDA)
+window.iniciarCozinhaFinal = function(scene, player) {
+    if(!scene || !player) {
+        alert("❌ ERRO: Não conseguiu conectar ao jogo!");
+        return;
+    }
+    
+    console.log("✅ CONECTADO AO JOGO!");
+    window.chefAtivo = true;
+    
+    // 5. ESTADO
+    window.chefState = {
+        chapaPos: null,
+        balcaoPos: null,
+        chapaObj: null,
+        balcaoObj: null,
+        moedas: 0,
+        fase: "AGUARDANDO"
+    };
+    
+    // 6. INTERFACE MÍNIMA (SEM DEPENDÊNCIAS)
+    if(!document.getElementById('chef-panel')) {
+        const panel = document.createElement('div');
+        panel.id = 'chef-panel';
+        panel.style.cssText = `
+            position: fixed;
+            left: 20px;
+            top: 200px;
+            width: 250px;
+            background: black;
+            border: 3px solid magenta;
+            border-radius: 10px;
+            padding: 15px;
+            color: white;
+            z-index: 999999;
+            font-family: Arial;
+        `;
+        panel.innerHTML = `
+            <h3 style="color:magenta; text-align:center;">👨‍🍳 COZINHEIRO</h3>
+            <button id="btn-chapa" style="width:100%; padding:10px; background:magenta; color:white; border:none; margin:5px 0; font-weight:bold;">🔥 MARCAR CHAPA</button>
+            <button id="btn-balcao" style="width:100%; padding:10px; background:cyan; color:black; border:none; margin:5px 0; font-weight:bold;">💰 MARCAR BALCÃO</button>
+            <div id="chef-status" style="background:#111; padding:10px; margin-top:10px; color:#0ff; text-align:center;">AGUARDANDO...</div>
+            <div id="chef-money" style="font-size:24px; color:#0f0; text-align:center; margin-top:10px;">$0</div>
+        `;
+        document.body.appendChild(panel);
+    }
+    
+    // 7. FUNÇÃO PARA CRIAR MARCADOR (SIMPLES E VISÍVEL)
+    function criarMarcador(cor, texto, pos) {
+        const grupo = new THREE.Group();
+        
+        // CILINDRO ALTO E GROSSO
+        const cilindro = new THREE.Mesh(
+            new THREE.CylinderGeometry(2, 2, 20, 8),
+            new THREE.MeshBasicMaterial({ 
+                color: cor, 
+                wireframe: true,
+                transparent: true,
+                opacity: 0.9
+            })
+        );
+        cilindro.position.y = 10;
+        grupo.add(cilindro);
+        
+        // ESFERA PULSANTE NO TOPO
+        const esfera = new THREE.Mesh(
+            new THREE.SphereGeometry(1.5, 8, 8),
+            new THREE.MeshBasicMaterial({ color: cor })
+        );
+        esfera.position.y = 20;
+        grupo.add(esfera);
+        
+        // TEXTO GRANDE (SPRITE)
+        const canvas = document.createElement('canvas');
+        canvas.width = 256;
+        canvas.height = 64;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = cor === 0xff00ff ? '#ff00ff' : '#00ffff';
+        ctx.font = 'bold 30px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText(texto, 128, 40);
+        
+        const texture = new THREE.CanvasTexture(canvas);
+        const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture }));
+        sprite.scale.set(8, 2, 1);
+        sprite.position.y = 25;
+        grupo.add(sprite);
+        
+        grupo.position.copy(pos);
+        grupo.position.y += 1;
+        
+        scene.add(grupo);
+        return grupo;
+    }
+    
+    // 8. BOTÕES
+    setTimeout(() => {
+        const btnChapa = document.getElementById('btn-chapa');
+        const btnBalcao = document.getElementById('btn-balcao');
+        
+        if(btnChapa) {
+            btnChapa.onclick = function() {
+                if(!player) return alert("Sem player!");
+                
+                if(window.chefState.chapaObj) scene.remove(window.chefState.chapaObj);
+                
+                const pos = player.position.clone();
+                window.chefState.chapaObj = criarMarcador(0xff00ff, '🔥 CHAPA', pos);
+                window.chefState.chapaPos = pos;
+                
+                document.getElementById('chef-status').innerHTML = '✅ CHAPA MARCADA!';
+                console.log('CHAPA:', pos);
+            };
+        }
+        
+        if(btnBalcao) {
+            btnBalcao.onclick = function() {
+                if(!player) return alert("Sem player!");
+                
+                if(window.chefState.balcaoObj) scene.remove(window.chefState.balcaoObj);
+                
+                const pos = player.position.clone();
+                window.chefState.balcaoObj = criarMarcador(0x00ffff, '💰 BALCÃO', pos);
+                window.chefState.balcaoPos = pos;
+                
+                document.getElementById('chef-status').innerHTML = '✅ BALCÃO MARCADO!';
+                console.log('BALCÃO:', pos);
+            };
+        }
+    }, 100);
+    
+    // 9. LOOP DE VERIFICAÇÃO
+    window.chefTimer = setInterval(() => {
+        if(!player || !window.chefState.chapaPos || !window.chefState.balcaoPos) return;
+        
+        // ANIMA MARCADORES
+        if(window.chefState.chapaObj) {
+            window.chefState.chapaObj.rotation.y += 0.02;
+        }
+        if(window.chefState.balcaoObj) {
+            window.chefState.balcaoObj.rotation.y -= 0.02;
+        }
+        
+        // VERIFICA DISTÂNCIA
+        const distChapa = player.position.distanceTo(window.chefState.chapaPos);
+        const distBalcao = player.position.distanceTo(window.chefState.balcaoPos);
+        const statusEl = document.getElementById('chef-status');
+        
+        // LÓGICA DE COZINHAMENTO
+        if(distChapa < 15 && window.chefState.fase === "AGUARDANDO") {
+            window.chefState.fase = "COZINHANDO";
+            let progresso = 0;
+            
+            const cozinhar = setInterval(() => {
+                if(!player) return clearInterval(cozinhar);
+                const novaDist = player.position.distanceTo(window.chefState.chapaPos);
+                
+                if(novaDist >= 15) {
+                    clearInterval(cozinhar);
+                    window.chefState.fase = "AGUARDANDO";
+                    statusEl.innerHTML = '❌ COZINHA INTERROMPIDA';
+                    return;
+                }
+                
+                progresso += 20;
+                statusEl.innerHTML = `🔥 COZINHANDO: ${progresso}%`;
+                
+                if(progresso >= 100) {
+                    clearInterval(cozinhar);
+                    window.chefState.fase = "PRONTO";
+                    statusEl.innerHTML = '✅ PRONTO! LEVE AO BALCÃO';
+                }
+            }, 500);
+        }
+        
+        // ENTREGA
+        if(distBalcao < 15 && window.chefState.fase === "PRONTO") {
+            window.chefState.moedas += 50;
+            document.getElementById('chef-money').innerHTML = `$${window.chefState.moedas}`;
+            window.chefState.fase = "AGUARDANDO";
+            statusEl.innerHTML = '💰 +$50! PRONTO PARA MAIS';
+        }
+        
+    }, 100);
+    
+    alert("🎮 MODO COZINHEIRO CARREGADO!\n\nClique nos botões ROSA e AZUL para marcar os locais!");
+};
+
+// 10. SE NADA FUNCIONOU, TENTA PEDIR AJUDA
+setTimeout(() => {
+    if(!window.chefState) {
+        alert("❌ NÃO FOI POSSÍVEL CONECTAR!\n\nDigite no console:\nwindow.iniciarCozinhaFinal(scene, player)");
+    }
+}, 2000);
