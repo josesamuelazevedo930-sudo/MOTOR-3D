@@ -1,0 +1,108 @@
+(function() {
+    if (window.siriTimer) clearInterval(window.siriTimer);
+    if (document.getElementById('chef-hud')) document.getElementById('chef-hud').remove();
+
+    let chefData = {
+        moedas: parseInt(localStorage.getItem('siriMoedas')) || 0,
+        posC: null, posB: null,
+        labelC: null, labelB: null,
+        estado: "CONFIG", progresso: 0
+    };
+
+    // HUD SIMPLIFICADA
+    const hud = document.createElement('div');
+    hud.id = 'chef-hud';
+    hud.style.cssText = "position:absolute; left:20px; top:250px; width:160px; background:rgba(0,0,0,0.8); border:2px solid #ff00ff; border-radius:8px; padding:8px; color:white; font-family:sans-serif; z-index:10002;";
+    hud.innerHTML = `
+        <div style="color:#ff00ff; font-weight:bold; font-size:12px; text-align:center;">SIRI CHEF TV</div>
+        <div id="c-mon" style="color:#0f0; text-align:center;">$ ${chefData.moedas}</div>
+        <div id="c-status" style="font-size:10px; margin:5px 0;">Marque os locais!</div>
+        <button id="b-chapa" style="width:100%; background:orange; border:none; margin-bottom:2px;">SET CHAPA</button>
+        <button id="b-balcao" style="width:100%; background:green; border:none; color:white;">SET BALCÃO</button>
+    `;
+    document.body.appendChild(hud);
+
+    // FUNÇÃO PARA CRIAR O "NOME" NO MAPA (Igual ao seu Multiplayer)
+    function criarEtiqueta(texto, cor) {
+        const canvas = document.createElement('canvas');
+        canvas.width = 256; canvas.height = 128;
+        const ctx = canvas.getContext('2d');
+        // Fundo da placa para ver melhor
+        ctx.fillStyle = "rgba(0,0,0,0.7)";
+        ctx.fillRect(0, 0, 256, 128);
+        // Texto
+        ctx.fillStyle = cor;
+        ctx.font = "bold 40px Arial";
+        ctx.textAlign = "center";
+        ctx.fillText(texto, 128, 75);
+
+        const tex = new THREE.CanvasTexture(canvas);
+        const mat = new THREE.SpriteMaterial({ map: tex, depthTest: false }); // depthTest false faz ver através da parede
+        const spr = new THREE.Sprite(mat);
+        spr.scale.set(12, 6, 1);
+        scene.add(spr);
+        return spr;
+    }
+
+    document.getElementById('b-chapa').onclick = () => {
+        if(chefData.labelC) scene.remove(chefData.labelC);
+        chefData.labelC = criarEtiqueta("🔥 CHAPA", "#ffaa00");
+        chefData.labelC.position.copy(player.position);
+        chefData.labelC.position.y += 10;
+        chefData.posC = player.position.clone();
+        document.getElementById('c-status').innerText = "Chapa Marcada!";
+        checkStart();
+    };
+
+    document.getElementById('b-balcao').onclick = () => {
+        if(chefData.labelB) scene.remove(chefData.labelB);
+        chefData.labelB = criarEtiqueta("💰 BALCÃO", "#00ffff");
+        chefData.labelB.position.copy(player.position);
+        chefData.labelB.position.y += 10;
+        chefData.posB = player.position.clone();
+        document.getElementById('c-status').innerText = "Balcão Marcado!";
+        checkStart();
+    };
+
+    function checkStart() {
+        if(chefData.posC && chefData.posB) chefData.estado = "BUSCAR";
+    }
+
+    window.siriTimer = setInterval(() => {
+        if(!player || chefData.estado === "CONFIG") return;
+
+        let dC = player.position.distanceTo(chefData.posC);
+        let dB = player.position.distanceTo(chefData.posB);
+        const msg = document.getElementById('c-status');
+
+        if(chefData.estado === "BUSCAR" && dB < 7) {
+            chefData.estado = "FRITAR";
+            msg.innerText = "PEGOU! VÁ COZINHAR!";
+            msg.style.color = "orange";
+        }
+
+        if(chefData.estado === "FRITAR" && dC < 7) {
+            chefData.estado = "COZINHANDO";
+            chefData.progresso = 0;
+        }
+
+        if(chefData.estado === "COZINHANDO") {
+            chefData.progresso += 2;
+            msg.innerText = "FRITANDO: " + chefData.progresso + "%";
+            if(chefData.progresso >= 100) {
+                chefData.estado = "ENTREGAR";
+                msg.innerText = "PRONTO! ENTREGUE!";
+                msg.style.color = "#0f0";
+            }
+        }
+
+        if(chefData.estado === "ENTREGAR" && dB < 7) {
+            chefData.moedas += 100;
+            localStorage.setItem('siriMoedas', chefData.moedas);
+            document.getElementById('c-mon').innerText = "$ " + chefData.moedas;
+            chefData.estado = "BUSCAR";
+            msg.innerText = "+$100! BUSQUE MAIS!";
+            msg.style.color = "white";
+        }
+    }, 300);
+})();
