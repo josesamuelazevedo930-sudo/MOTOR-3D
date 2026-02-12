@@ -1,0 +1,148 @@
+// 1. LIMPEZA TOTAL
+if(document.getElementById('ui-career')) document.getElementById('ui-career').remove();
+if(document.getElementById('chapa-screen')) document.getElementById('chapa-screen').remove();
+
+// 2. ESTILOS DAS CORES E BURGERS
+const style = document.createElement('style');
+style.innerHTML = `
+    .burger-slot { width: 70px; height: 70px; border-radius: 50%; background: #444; margin: 15px; display: inline-block; border: 5px solid #222; cursor: pointer; }
+    .status-fritando { background: #d35400 !important; border-color: #e67e22 !important; box-shadow: 0 0 15px #e67e22; }
+    .status-pronto { background: #27ae60 !important; border-color: #2ecc71 !important; box-shadow: 0 0 20px #2ecc71; }
+    .btn-menu { width: 100%; padding: 12px; margin-top: 8px; background: #000; color: #0ff; border: 1px solid #0ff; font-weight: bold; cursor: pointer; }
+`;
+document.head.appendChild(style);
+
+// 3. INTERFACE DE CONFIGURAÇÃO
+const ui = document.createElement('div');
+ui.id = 'ui-career';
+ui.style.cssText = "position:absolute; right:20px; top:80px; width:200px; background:rgba(0,0,0,0.9); padding:15px; border:3px solid #0ff; z-index:10000; color:#0ff; font-family:sans-serif; text-align:center; border-radius:10px;";
+ui.innerHTML = `
+    <b style="font-size:16px;">SIRI CHEF V2</b><br>
+    <p id="info-status" style="font-size:12px; color:#fff;">Marque os locais para começar</p>
+    <button class="btn-menu" id="set-chapa">1. MARCAR CHAPA</button>
+    <button class="btn-menu" id="set-balcao">2. MARCAR BALCÃO</button>
+    <button class="btn-menu" id="start-duty" style="display:none; background:#0ff; color:#000;">COMEÇAR TURNO</button>
+    <div id="money-display" style="margin-top:10px; font-weight:bold; color:#0f0; font-size:18px;">$ 0</div>
+`;
+document.body.appendChild(ui);
+
+// 4. TELA DA CHAPA (MINI-GAME)
+const gameScreen = document.createElement('div');
+gameScreen.id = 'chapa-screen';
+gameScreen.style.cssText = "position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); width:320px; background:#222; border:6px solid #555; border-radius:20px; padding:20px; text-align:center; display:none; z-index:10001; color:white;";
+gameScreen.innerHTML = `
+    <h2 style="color:#f39c12; margin-top:0;">GRELHA ATIVA</h2>
+    <p style="font-size:12px;">ESPERE FICAR VERDE E CLIQUE!</p>
+    <div id="burger-1" class="burger-slot"></div>
+    <div id="burger-2" class="burger-slot"></div>
+    <br><button id="close-chapa" style="margin-top:15px; padding:5px 20px;">SAIR</button>
+`;
+document.body.appendChild(gameScreen);
+
+// 5. LÓGICA DO JOGO E MARCADORES
+let posChapa = null, posBalcao = null, grana = 0, burgersProntos = 0, emTurno = false;
+let marcadorChapa, marcadorBalcao;
+
+// FUNÇÃO PARA CRIAR O MARCADOR VERDE (COLUNA DE LUZ)
+function criarMarcador(cor) {
+    const geo = new THREE.CylinderGeometry(2, 2, 50, 32);
+    const mat = new THREE.MeshBasicMaterial({ color: cor, transparent: true, opacity: 0.4 });
+    const mesh = new THREE.Mesh(geo, mat);
+    window.scene.add(mesh);
+    return mesh;
+}
+
+// BOTÕES DE CONFIGURAÇÃO
+document.getElementById('set-chapa').onclick = () => {
+    const p = window.player || player;
+    posChapa = p.position.clone();
+    if(marcadorChapa) window.scene.remove(marcadorChapa);
+    marcadorChapa = criarMarcador(0xffa500); // Laranja para chapa
+    marcadorChapa.position.copy(posChapa);
+    document.getElementById('info-status').innerText = "Chapa marcada!";
+    checkReady();
+};
+
+document.getElementById('set-balcao').onclick = () => {
+    const p = window.player || player;
+    posBalcao = p.position.clone();
+    if(marcadorBalcao) window.scene.remove(marcadorBalcao);
+    marcadorBalcao = criarMarcador(0x00ff00); // Verde para balcão
+    marcadorBalcao.position.copy(posBalcao);
+    document.getElementById('info-status').innerText = "Balcão marcado!";
+    checkReady();
+};
+
+function checkReady() {
+    if(posChapa && posBalcao) document.getElementById('start-duty').style.display = 'block';
+}
+
+document.getElementById('start-duty').onclick = () => {
+    emTurno = true;
+    ui.style.display = 'none';
+    avisar("TURNO INICIADO! VÁ ATÉ A LUZ LARANJA.");
+};
+
+// MINI-GAME DA CHAPA
+function iniciarFritura() {
+    if(gameScreen.style.display === 'block') return;
+    gameScreen.style.display = 'block';
+    const slots = [document.getElementById('burger-1'), document.getElementById('burger-2')];
+    
+    slots.forEach(s => {
+        s.className = 'burger-slot';
+        s.onclick = null;
+        setTimeout(() => {
+            s.classList.add('status-fritando');
+            setTimeout(() => {
+                s.classList.add('status-pronto');
+                s.onclick = () => {
+                    burgersProntos++;
+                    s.className = 'burger-slot';
+                    s.onclick = null;
+                    if(burgersProntos >= 2) {
+                        setTimeout(() => { 
+                            gameScreen.style.display = 'none';
+                            avisar("PRONTO! LEVE ATÉ A LUZ VERDE.");
+                        }, 500);
+                    }
+                };
+            }, 3000 + Math.random() * 2000);
+        }, 1000);
+    });
+}
+
+document.getElementById('close-chapa').onclick = () => { gameScreen.style.display = 'none'; };
+
+// LOOP DE CHECAGEM (DISTÂNCIA)
+setInterval(() => {
+    if(!emTurno) return;
+    const p = window.player || player;
+    if(!p) return;
+
+    let dChapa = p.position.distanceTo(posChapa);
+    let dBalcao = p.position.distanceTo(posBalcao);
+
+    // Na Chapa
+    if(dChapa < 5 && burgersProntos === 0) {
+        iniciarFritura();
+    }
+
+    // No Balcão
+    if(dBalcao < 5 && burgersProntos >= 2) {
+        grana += 100;
+        burgersProntos = 0;
+        document.getElementById('money-display').innerText = "$ " + grana;
+        avisar("PEDIDO ENTREGUE! +$100");
+    }
+}, 500);
+
+function avisar(t) {
+    const m = document.createElement('div');
+    m.style.cssText = "position:absolute; top:20%; left:50%; transform:translate(-50%,-50%); color:#fff; font-size:22px; font-weight:bold; text-shadow:2px 2px #000; z-index:10002; pointer-events:none; background:rgba(0,0,0,0.5); padding:10px; border-radius:10px;";
+    m.innerText = t;
+    document.body.appendChild(m);
+    setTimeout(() => m.remove(), 3000);
+}
+
+avisar("BEM-VINDO AO TRABALHO!");
