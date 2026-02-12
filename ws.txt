@@ -1,0 +1,141 @@
+// Tentativa FINAL com SocketsBay canal fixo + logs melhores
+// Use sala = número 1 a 999 (ex: 777)
+// Envia posição/chat mais vezes para forçar broadcast se existir
+
+function initBayFixed() {
+    const btn = document.createElement('button');
+    btn.className = 'ui-btn';
+    btn.style.background = '#ff8800';
+    btn.style.top = '185px';
+    btn.innerText = 'BAY FIXO';
+    btn.onclick = () => tgl('bay-panel');
+    document.body.appendChild(btn);
+
+    const panel = document.createElement('div');
+    panel.id = 'bay-panel';
+    panel.className = 'panel';
+    panel.style.top = '240px';
+    panel.style.display = 'none';
+    document.body.appendChild(panel);
+    panel.innerHTML = `
+        <p style="font-size:11px;margin:0;">Seu Nome:</p>
+        <input id="bay-name" placeholder="Samuel" style="width:95%;">
+        <p style="font-size:11px;margin:5px 0;">Sala (número 1-999):</p>
+        <input id="bay-room" placeholder="777" style="width:95%;">
+        <button class="opt" onclick="connectBayFixed()" style="background:#28a745;font-size:11px;">CONECTAR</button>
+        <button class="opt" onclick="disconnectBayFixed()" style="background:#ff3333;font-size:11px;">SAIR</button>
+        <div id="bay-log" style="max-height:180px;overflow-y:auto;font-size:10px;background:#000;color:#0f0;padding:5px;border-radius:6px;margin:5px 0;"></div>
+        <input id="bay-msg" placeholder="Teste msg..." style="width:70%;font-size:11px;">
+        <button class="opt" onclick="sendBayMsg()" style="width:25%;background:#007bff;font-size:11px;">ENVIAR</button>
+    `;
+
+    let ws = null;
+    let name = '';
+    let room = '777';
+    let connected = false;
+    let otherModel = null;
+    let lastPos = new THREE.Vector3();
+    let lastRot = 0;
+
+    window.connectBayFixed = function() {
+        name = document.getElementById('bay-name').value.trim() || 'Samuel7777';
+        room = document.getElementById('bay-room').value.trim() || '777';
+        if (connected) return;
+
+        const url = `wss://socketsbay.com/wss/v2/${room}/demo/`;
+        logBay(`Tentando conectar em ${url}... (sala ${room})`);
+
+        ws = new WebSocket(url);
+
+        ws.onopen = () => {
+            connected = true;
+            logBay('✅ Conectado! Envie msg ou mova o personagem para testar.');
+            ws.send(JSON.stringify({type: 'join', name: name, time: Date.now()}));
+        };
+
+        ws.onmessage = (e) => {
+            logBay('Mensagem recebida: ' + e.data);
+            try {
+                const data = JSON.parse(e.data);
+                if (data.type === 'join' && data.name !== name) {
+                    logBay(`${data.name} entrou!`);
+                    loadOtherModel();
+                } else if (data.type === 'move' && data.name !== name) {
+                    if (otherModel) {
+                        otherModel.position.set(data.x, data.y, data.z);
+                        otherModel.rotation.y = data.rot;
+                        logBay(`Posição atualizada do outro: ${data.x.toFixed(1)}, ${data.y.toFixed(1)}`);
+                    }
+                } else if (data.type === 'msg') {
+                    addBayChat(`${data.name}: ${data.text}`);
+                }
+            } catch (err) {
+                logBay('Raw recebido: ' + e.data);
+            }
+        };
+
+        ws.onclose = () => {
+            connected = false;
+            logBay('❌ Conexão fechada (código: ' + (ws.closeCode || 'desconhecido') + ')');
+        };
+
+        ws.onerror = (err) => {
+            logBay('❌ Erro na conexão: veja console F12 para detalhes.');
+        };
+    };
+
+    window.disconnectBayFixed = function() {
+        if (ws) ws.close();
+        connected = false;
+        if (otherModel) scene.remove(otherModel);
+        otherModel = null;
+        document.getElementById('bay-log').innerHTML = '';
+    };
+
+    window.sendBayMsg = function() {
+        const msg = document.getElementById('bay-msg').value.trim();
+        if (!msg || !connected) return;
+        ws.send(JSON.stringify({type: 'msg', name: name, text: msg}));
+        document.getElementById('bay-msg').value = '';
+        logBay('Msg enviada: ' + msg);
+    };
+
+    function logBay(msg) {
+        const div = document.getElementById('bay-log');
+        div.innerHTML += `<p style="margin:2px 0;">${msg}</p>`;
+        div.scrollTop = div.scrollHeight;
+    }
+
+    function addBayChat(msg) {
+        logBay('CHAT: ' + msg);
+    }
+
+    function loadOtherModel() {
+        loaderGLTF.load(defaultSkins[0].u, gltf => {
+            otherModel = gltf.scene.clone();
+            const box = new THREE.Box3().setFromObject(otherModel);
+            const s = 8 / (box.getSize(new THREE.Vector3()).y || 1);
+            otherModel.scale.set(s, s, s);
+            scene.add(otherModel);
+            logBay('Modelo do outro carregado!');
+        });
+    }
+
+    const origAnimate = animate;
+    window.animate = function() {
+        origAnimate();
+        if (connected && ws && ws.readyState === WebSocket.OPEN && player) {
+            const pos = player.position;
+            const rot = player.rotation.y;
+            if (!pos.equals(lastPos) || rot !== lastRot) {
+                ws.send(JSON.stringify({type: 'move', name: name, x: pos.x, y: pos.y, z: pos.z, rot}));
+                lastPos.copy(pos);
+                lastRot = rot;
+                logBay('Posição enviada');
+            }
+        }
+    };
+}
+
+initBayFixed();
+alert('Script BAY FIXO carregado! Use canal fixo (ex: 777) nos dois lados. Veja o log para depurar.');
