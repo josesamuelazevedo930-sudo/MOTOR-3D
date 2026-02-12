@@ -1,0 +1,166 @@
+(function() {
+    if (window.siriTimer) clearInterval(window.siriTimer);
+    if (document.getElementById('chef-hud')) document.getElementById('chef-hud').remove();
+
+    let chefData = {
+        moedas: parseInt(localStorage.getItem('siriMoedas')) || 0,
+        posC: null, mesasPos: [], 
+        labelsM: [], labelC: null,
+        estado: "SETUP_CHAPA", 
+        pedidoAtual: null, // { mesa: X, tipo: Y }
+        progresso: [0, 0, 0], // Para os 3 hambúrgueres
+    };
+
+    const TIPOS = [
+        { nome: "Siri Comum", cor: "#d35400", tecla: "1" },
+        { nome: "Siri Queijo", cor: "#f1c40f", tecla: "2" },
+        { nome: "Siri Especial", cor: "#e74c3c", tecla: "3" }
+    ];
+
+    function tocarBip(f, d = 0.1) {
+        try {
+            const ctx = new (window.AudioContext || window.webkitAudioContext)();
+            const o = ctx.createOscillator(); const g = ctx.createGain();
+            o.connect(g); g.connect(ctx.destination);
+            o.frequency.value = f; g.gain.setValueAtTime(0.1, ctx.currentTime);
+            o.start(); o.stop(ctx.currentTime + d);
+        } catch(e) {}
+    }
+
+    // INTERFACE PRINCIPAL
+    const hud = document.createElement('div');
+    hud.id = 'chef-hud';
+    hud.style.cssText = "position:absolute; left:20px; top:150px; width:220px; background:rgba(0,10,30,0.95); border:2px solid #00ffff; border-radius:12px; padding:12px; color:white; font-family:sans-serif; z-index:10002; box-shadow: 0 0 15px #00ffff;";
+    hud.innerHTML = `
+        <div style="text-align:center; color:#00ffff; font-weight:bold; margin-bottom:10px;">🍔 SIRI CASVUDO MANAGER</div>
+        <div id="c-mon" style="color:#0f0; text-align:center; font-size:18px; font-weight:bold;">$ ${chefData.moedas}</div>
+        <div id="c-status" style="font-size:11px; margin:10px 0; text-align:center; color:#fff; background:#222; padding:5px;">Marque a CHAPA primeiro!</div>
+        
+        <div id="setup-section">
+            <button id="btn-set-main" style="width:100%; padding:10px; background:#ff00ff; border:none; color:white; font-weight:bold; border-radius:6px; cursor:pointer;">MARCAR LOCAL</button>
+        </div>
+
+        <div id="kitchen-ui" style="display:none; margin-top:10px; border-top:1px solid #444; padding-top:10px;">
+            <div style="font-size:10px; margin-bottom:5px;">GRELHA (Teclas 1, 2, 3)</div>
+            <div style="display:flex; gap:5px; justify-content:center;">
+                <div id="slot-0" style="width:50px; height:50px; background:#333; border:2px solid #d35400; border-radius:8px; font-size:9px; display:flex; align-items:center; justify-content:center; text-align:center;">1</div>
+                <div id="slot-1" style="width:50px; height:50px; background:#333; border:2px solid #f1c40f; border-radius:8px; font-size:9px; display:flex; align-items:center; justify-content:center; text-align:center;">2</div>
+                <div id="slot-2" style="width:50px; height:50px; background:#333; border:2px solid #e74c3c; border-radius:8px; font-size:9px; display:flex; align-items:center; justify-content:center; text-align:center;">3</div>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(hud);
+
+    function criarEtiqueta(texto, cor) {
+        const canvas = document.createElement('canvas');
+        canvas.width = 256; canvas.height = 100;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = "rgba(0,0,0,0.8)"; ctx.fillRect(0, 0, 256, 100);
+        ctx.fillStyle = cor; ctx.font = "bold 35px Arial"; ctx.textAlign = "center";
+        ctx.fillText(texto, 128, 60);
+        const spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(canvas), depthTest: false }));
+        spr.scale.set(10, 4, 1); scene.add(spr);
+        return spr;
+    }
+
+    // LÓGICA DE MARCAÇÃO
+    document.getElementById('btn-set-main').onclick = () => {
+        const p = player.position.clone();
+        if(chefData.estado === "SETUP_CHAPA") {
+            chefData.posC = p;
+            chefData.labelC = criarEtiqueta("🔥 COZINHA", "#ff00ff");
+            chefData.labelC.position.copy(p); chefData.labelC.position.y += 10;
+            chefData.estado = "SETUP_MESAS";
+            document.getElementById('c-status').innerText = "Agora marque as 6 MESAS";
+            tocarBip(600);
+        } else if(chefData.estado === "SETUP_MESAS") {
+            let i = chefData.mesasPos.length;
+            chefData.mesasPos.push(p);
+            let lb = criarEtiqueta("🪑 MESA " + (i+1), "#00ffff");
+            lb.position.copy(p); lb.position.y += 8;
+            chefData.labelsM.push(lb);
+            tocarBip(700 + (i*50));
+            if(chefData.mesasPos.length >= 6) {
+                chefData.estado = "GERAR_PEDIDO";
+                document.getElementById('setup-section').style.display = "none";
+                proximoPedido();
+            }
+        }
+    };
+
+    function proximoPedido() {
+        const mesaIdx = Math.floor(Math.random() * 6);
+        const tipoIdx = Math.floor(Math.random() * 3);
+        chefData.pedidoAtual = { mesa: mesaIdx, tipo: tipoIdx };
+        document.getElementById('c-status').innerHTML = `<b style="color:#00ffff">PEDIDO:</b> MESA ${mesaIdx+1} quer um ${TIPOS[tipoIdx].nome}!`;
+        tocarBip(440, 0.2);
+    }
+
+    // TECLADO (1, 2, 3)
+    window.addEventListener('keydown', (e) => {
+        if(chefData.estado === "NA_GRELHA") {
+            let idx = parseInt(e.key) - 1;
+            if(idx >= 0 && idx <= 2) iniciarFritura(idx);
+        }
+    });
+
+    function iniciarFritura(idx) {
+        if(chefData.progresso[idx] > 0) return;
+        chefData.progresso[idx] = 1;
+        tocarBip(300, 0.1);
+    }
+
+    window.siriTimer = setInterval(() => {
+        if(!player || chefData.estado === "SETUP_CHAPA" || chefData.estado === "SETUP_MESAS") return;
+
+        const dC = player.position.distanceTo(chefData.posC);
+        const msg = document.getElementById('c-status');
+        const kitUI = document.getElementById('kitchen-ui');
+
+        // Fase: Indo para a Cozinha
+        if(chefData.estado === "GERAR_PEDIDO" && dC < 7) {
+            chefData.estado = "NA_GRELHA";
+            kitUI.style.display = "block";
+        }
+
+        if(chefData.estado === "NA_GRELHA") {
+            if(dC > 10) { chefData.estado = "GERAR_PEDIDO"; kitUI.style.display = "none"; return; }
+            
+            TIPOS.forEach((tipo, i) => {
+                let slot = document.getElementById('slot-' + i);
+                if(chefData.progresso[i] > 0 && chefData.progresso[i] < 100) {
+                    chefData.progresso[i] += 2;
+                    slot.style.background = `linear-gradient(to top, ${tipo.cor} ${chefData.progresso[i]}%, #333 0%)`;
+                    slot.innerHTML = "FRITANDO";
+                } else if(chefData.progresso[i] >= 100) {
+                    slot.innerHTML = "PRONTO!<br>(Clique)";
+                    slot.style.background = "#0f0";
+                    slot.onclick = () => {
+                        if(i === chefData.pedidoAtual.tipo) {
+                            chefData.estado = "ENTREGAR";
+                            kitUI.style.display = "none";
+                            msg.innerHTML = `<b style="color:#0f0">SUCESSO!</b> LEVE PARA A MESA ${chefData.pedidoAtual.mesa + 1}`;
+                            tocarBip(1000, 0.3);
+                        } else {
+                            alert("Esse não é o pedido da mesa!");
+                            chefData.progresso[i] = 0;
+                        }
+                    };
+                }
+            });
+        }
+
+        if(chefData.estado === "ENTREGAR") {
+            const dMesa = player.position.distanceTo(chefData.mesasPos[chefData.pedidoAtual.mesa]);
+            if(dMesa < 7) {
+                chefData.moedas += 150;
+                localStorage.setItem('siriMoedas', chefData.moedas);
+                document.getElementById('c-mon').innerText = "$ " + chefData.moedas;
+                chefData.progresso = [0, 0, 0];
+                proximoPedido();
+                chefData.estado = "GERAR_PEDIDO";
+                tocarBip(1500, 0.2);
+            }
+        }
+    }, 200);
+})();
