@@ -1,0 +1,58 @@
+// MQTT com logs extras para TV depurar
+
+function initMQTTDebug() {
+    const mqttScript = document.createElement('script');
+    mqttScript.src = 'https://unpkg.com/mqtt@5.8.0/dist/mqtt.min.js';
+    mqttScript.onload = () => {
+        alert('MQTT carregado. Tente conectar - veja o painel para logs.');
+        setupDebugPanel();
+    };
+    mqttScript.onerror = () => alert('Falha ao carregar MQTT.js - navegador da TV bloqueia CDN ou WS.');
+    document.head.appendChild(mqttScript);
+}
+
+function setupDebugPanel() {
+    // Botão
+    const btn = document.createElement('button');
+    btn.className = 'ui-btn';
+    btn.style.background = '#28a745';
+    btn.style.top = '185px';
+    btn.innerText = 'DEBUG MQTT';
+    btn.onclick = () => tgl('debug-panel');
+    document.body.appendChild(btn);
+
+    const panel = document.createElement('div');
+    panel.id = 'debug-panel';
+    panel.className = 'panel';
+    panel.style.top = '240px';
+    panel.style.display = 'none';
+    document.body.appendChild(panel);
+    panel.innerHTML = `
+        <p style="font-size:11px;color:#ff0;">DEBUG TV - veja aqui erros</p>
+        <button class="opt" onclick="tryConnectDebug()" style="background:#ff8800;font-size:11px;">TENTAR CONECTAR</button>
+        <div id="debug-log" style="max-height:200px;overflow-y:auto;font-size:10px;background:#000;color:#0f0;padding:5px;border-radius:6px;margin-top:5px;"></div>
+    `;
+
+    window.tryConnectDebug = function() {
+        logDebug('Iniciando conexão...');
+        try {
+            const client = mqtt.connect('wss://broker.emqx.io:8084/mqtt', { clientId: 'debug-tv-' + Math.random() });
+            logDebug('MQTT.connect chamado.');
+            client.on('connect', () => logDebug('✅ Conectado! WS OK na TV.'));
+            client.on('error', (err) => logDebug('❌ Erro WS: ' + (err.message || 'desconhecido')));
+            client.on('close', () => logDebug('Conexão fechada.'));
+            client.on('offline', () => logDebug('Offline - internet ou WS bloqueado.'));
+        } catch (e) {
+            logDebug('Erro ao criar client: ' + e.message);
+        }
+    };
+
+    function logDebug(msg) {
+        const div = document.getElementById('debug-log');
+        div.innerHTML += `<p>${new Date().toLocaleTimeString()} - ${msg}</p>`;
+        div.scrollTop = div.scrollHeight;
+    }
+}
+
+initMQTTDebug();
+alert('Script DEBUG MQTT carregado! Clique DEBUG MQTT → TENTAR CONECTAR. Veja o log amarelo/preto para ver se WS conecta na TV.');
