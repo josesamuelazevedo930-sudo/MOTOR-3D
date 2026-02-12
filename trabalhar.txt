@@ -1,0 +1,389 @@
+// ============================================
+// MODO COZINHEIRO PRO - IMERSÃO TOTAL
+// OTIMIZADO PARA HARDWARE LIMITADO
+// ============================================
+
+if(document.getElementById('chef-mode')) document.getElementById('chef-mode').remove();
+
+// ========== VARIÁVEIS GLOBAIS DO MODO ==========
+let chefMode = {
+    // Posições
+    chapaPos: null,
+    balcaoPos: null,
+    
+    // Economia
+    dinheiro: 0,
+    
+    // Estado da chapa
+    naChapa: false,
+    hamburgueres: [
+        { estado: 'cru', progresso: 0, coletado: false, x: -40, y: -20 },
+        { estado: 'cru', progresso: 0, coletado: false, x: 40, y: -20 }
+    ],
+    
+    // Coleta
+    hamburgueresColetados: 0,
+    
+    // Timers
+    lastFrame: performance.now(),
+    tempoFritura: 3000, // 3 segundos por estágio
+    
+    // Otimização
+    frameSkip: 0,
+    updateInterval: null
+};
+
+// ========== INTERFACE PRINCIPAL ==========
+const ui = document.createElement('div');
+ui.id = 'chef-mode';
+ui.style.cssText = `
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 9999;
+    font-family: 'Courier New', monospace;
+`;
+
+// HUD Superior
+const hud = document.createElement('div');
+hud.style.cssText = `
+    position: absolute;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0,0,0,0.9);
+    color: white;
+    padding: 15px 30px;
+    border-radius: 50px;
+    border: 2px solid #ffaa00;
+    box-shadow: 0 0 20px #ffaa00;
+    display: flex;
+    gap: 40px;
+    font-size: 24px;
+    font-weight: bold;
+    pointer-events: none;
+    z-index: 10000;
+`;
+
+hud.innerHTML = `
+    <div style="color: #ffaa00;">💰 $<span id="chef-dinheiro">0</span></div>
+    <div style="color: #00ff00;">🍔 <span id="chef-hamburgueres">0</span>/2</div>
+`;
+
+ui.appendChild(hud);
+
+// Mensagens Toast (centro da tela)
+const toast = document.createElement('div');
+toast.style.cssText = `
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(0,0,0,0.95);
+    color: #ffaa00;
+    padding: 20px 40px;
+    border-radius: 15px;
+    border: 3px solid #ffaa00;
+    font-size: 32px;
+    font-weight: 900;
+    text-align: center;
+    opacity: 0;
+    transition: opacity 0.3s;
+    pointer-events: none;
+    z-index: 10001;
+    text-shadow: 0 0 10px #ffaa00;
+    letter-spacing: 2px;
+`;
+ui.appendChild(toast);
+
+// Interface da Chapa (invisível inicialmente)
+const chapaUI = document.createElement('div');
+chapaUI.id = 'chapa-interface';
+chapaUI.style.cssText = `
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(0,0,0,0.98);
+    border: 4px solid #444;
+    border-radius: 30px;
+    padding: 40px;
+    display: none;
+    pointer-events: auto;
+    z-index: 10002;
+    box-shadow: 0 0 50px rgba(255,170,0,0.5);
+`;
+
+chapaUI.innerHTML = `
+    <div style="color: white; font-size: 28px; margin-bottom: 30px; text-align: center; font-weight: bold;">
+        🔥 CHAPA QUENTE 🔥
+    </div>
+    <div style="display: flex; gap: 80px; justify-content: center; margin-bottom: 30px;">
+        <div id="burger1" style="text-align: center;">
+            <div style="width: 120px; height: 120px; border-radius: 50%; background: #555; border: 4px solid #333; margin-bottom: 10px; transition: all 0.2s; cursor: pointer;"></div>
+            <div style="color: white; font-size: 18px;">🍔 HAMBÚRGUER 1</div>
+        </div>
+        <div id="burger2" style="text-align: center;">
+            <div style="width: 120px; height: 120px; border-radius: 50%; background: #555; border: 4px solid #333; margin-bottom: 10px; transition: all 0.2s; cursor: pointer;"></div>
+            <div style="color: white; font-size: 18px;">🍔 HAMBÚRGUER 2</div>
+        </div>
+    </div>
+    <div style="color: #aaa; text-align: center; font-size: 20px; margin-top: 20px;">
+        ⏱️ CLIQUE QUANDO ESTIVER VERDE!
+    </div>
+`;
+ui.appendChild(chapaUI);
+
+// Botões dos hambúrgueres
+const burger1Div = chapaUI.querySelector('#burger1 div');
+const burger2Div = chapaUI.querySelector('#burger2 div');
+
+document.body.appendChild(ui);
+
+// ========== FUNÇÕES DE MARCAÇÃO ==========
+function mostrarMensagem(texto, cor = '#ffaa00') {
+    toast.style.opacity = '1';
+    toast.style.color = cor;
+    toast.style.borderColor = cor;
+    toast.innerHTML = texto;
+    
+    setTimeout(() => {
+        toast.style.opacity = '0';
+    }, 2000);
+}
+
+function marcarChapa() {
+    if(!window.player) {
+        mostrarMensagem('❌ JOGADOR NÃO ENCONTRADO', '#ff3333');
+        return;
+    }
+    
+    chefMode.chapaPos = window.player.position.clone();
+    mostrarMensagem('✅ CHAPA MARCADA!', '#00ff00');
+    console.log('Chapa marcada em:', chefMode.chapaPos);
+}
+
+function marcarBalcao() {
+    if(!window.player) {
+        mostrarMensagem('❌ JOGADOR NÃO ENCONTRADO', '#ff3333');
+        return;
+    }
+    
+    chefMode.balcaoPos = window.player.position.clone();
+    mostrarMensagem('✅ BALCÃO MARCADO!', '#00ff00');
+    console.log('Balcão marcado em:', chefMode.balcaoPos);
+}
+
+// ========== SISTEMA DE FRITURA ==========
+function atualizarCoresBurgers() {
+    const cores = {
+        cru: '#8B4513',     // Marrom escuro
+        fritando: '#CD853F', // Peru
+        pronto: '#32CD32'    // Verde limão
+    };
+    
+    const textos = {
+        cru: 'CRU',
+        fritando: 'FRITANDO...',
+        pronto: 'PRONTO!'
+    };
+    
+    // Burger 1
+    if(!chefMode.hamburgueres[0].coletado) {
+        burger1Div.style.background = cores[chefMode.hamburgueres[0].estado];
+        burger1Div.parentElement.querySelector('div:last-child').innerHTML = `🍔 ${textos[chefMode.hamburgueres[0].estado]}`;
+    }
+    
+    // Burger 2
+    if(!chefMode.hamburgueres[1].coletado) {
+        burger2Div.style.background = cores[chefMode.hamburgueres[1].estado];
+        burger2Div.parentElement.querySelector('div:last-child').innerHTML = `🍔 ${textos[chefMode.hamburgueres[1].estado]}`;
+    }
+}
+
+function iniciarFritura() {
+    if(chefMode.frituraAtiva) return;
+    chefMode.frituraAtiva = true;
+    
+    // Reset dos burgers
+    chefMode.hamburgueres = [
+        { estado: 'cru', progresso: 0, coletado: false, x: -40, y: -20 },
+        { estado: 'cru', progresso: 0, coletado: false, x: 40, y: -20 }
+    ];
+    
+    atualizarCoresBurgers();
+    
+    // Loop de fritura OTIMIZADO
+    const iniciar = performance.now();
+    
+    function fritar(timestamp) {
+        if(!chefMode.naChapa) {
+            chefMode.frituraAtiva = false;
+            return;
+        }
+        
+        let atualizou = false;
+        
+        chefMode.hamburgueres.forEach((burger, index) => {
+            if(!burger.coletado) {
+                burger.progresso += 16; // ~60fps
+                
+                if(burger.estado === 'cru' && burger.progresso > chefMode.tempoFritura) {
+                    burger.estado = 'fritando';
+                    burger.progresso = 0;
+                    atualizou = true;
+                }
+                else if(burger.estado === 'fritando' && burger.progresso > chefMode.tempoFritura) {
+                    burger.estado = 'pronto';
+                    burger.progresso = chefMode.tempoFritura;
+                    atualizou = true;
+                }
+            }
+        });
+        
+        if(atualizou) atualizarCoresBurgers();
+        
+        if(chefMode.naChapa) {
+            requestAnimationFrame(fritar);
+        }
+    }
+    
+    requestAnimationFrame(fritar);
+}
+
+// ========== SISTEMA DE COLETA ==========
+function coletarBurger(index) {
+    const burger = chefMode.hamburgueres[index];
+    
+    if(burger.estado === 'pronto' && !burger.coletado) {
+        burger.coletado = true;
+        chefMode.hamburgueresColetados++;
+        
+        // Atualiza HUD
+        document.getElementById('chef-hamburgueres').textContent = chefMode.hamburgueresColetados;
+        
+        // Esconde burger visual
+        if(index === 0) {
+            burger1Div.style.background = '#333';
+            burger1Div.parentElement.querySelector('div:last-child').innerHTML = '🍔 COLETADO!';
+        } else {
+            burger2Div.style.background = '#333';
+            burger2Div.parentElement.querySelector('div:last-child').innerHTML = '🍔 COLETADO!';
+        }
+        
+        mostrarMensagem('✅ HAMBÚRGUER PRONTO!', '#32CD32');
+        
+        // Verifica se coletou 2
+        if(chefMode.hamburgueresColetados >= 2) {
+            setTimeout(() => {
+                fecharChapa();
+                mostrarMensagem('📦 ENTREGUE NO BALCÃO!', '#ffaa00');
+            }, 500);
+        }
+    } else {
+        mostrarMensagem('⏳ AINDA NÃO ESTÁ PRONTO!', '#ff3333');
+    }
+}
+
+function fecharChapa() {
+    chefMode.naChapa = false;
+    chefMode.frituraAtiva = false;
+    chapaUI.style.display = 'none';
+}
+
+// ========== SISTEMA DE ENTREGA ==========
+function entregarNoBalcao() {
+    if(!chefMode.balcaoPos || !window.player) {
+        mostrarMensagem('❌ MARQUE O BALCÃO PRIMEIRO!', '#ff3333');
+        return;
+    }
+    
+    // Calcula distância
+    const distancia = window.player.position.distanceTo(chefMode.balcaoPos);
+    
+    if(distancia < 15 && chefMode.hamburgueresColetados >= 2) {
+        // Adiciona dinheiro
+        chefMode.dinheiro += 50;
+        document.getElementById('chef-dinheiro').textContent = chefMode.dinheiro;
+        
+        // Reset dos burgers
+        chefMode.hamburgueresColetados = 0;
+        document.getElementById('chef-hamburgueres').textContent = '0';
+        
+        mostrarMensagem('💰 +$50', '#ffaa00');
+        
+        // Efeito visual
+        toast.style.fontSize = '48px';
+        setTimeout(() => toast.style.fontSize = '32px', 500);
+    } else if(distancia >= 15) {
+        mostrarMensagem('❌ CHEGUE MAIS PERTO DO BALCÃO!', '#ff3333');
+    } else {
+        mostrarMensagem('❌ FAÇA 2 HAMBÚRGUERES PRIMEIRO!', '#ff3333');
+    }
+}
+
+// ========== DETECÇÃO DE PROXIMIDADE OTIMIZADA ==========
+function checkProximidade() {
+    if(!window.player || !chefMode.chapaPos) return;
+    
+    // Só verifica a cada 10 frames (otimização)
+    chefMode.frameSkip++;
+    if(chefMode.frameSkip < 10) return;
+    chefMode.frameSkip = 0;
+    
+    const distancia = window.player.position.distanceTo(chefMode.chapaPos);
+    
+    // Abre/fecha chapa baseado na distância
+    if(distancia < 20 && !chefMode.naChapa && chefMode.hamburgueresColetados < 2) {
+        chefMode.naChapa = true;
+        chapaUI.style.display = 'block';
+        iniciarFritura();
+        mostrarMensagem('🔥 APROXIME-SE DA CHAPA!', '#ffaa00');
+    }
+    else if(distancia >= 20 && chefMode.naChapa) {
+        fecharChapa();
+        mostrarMensagem('👋 CHAPA FECHADA', '#888888');
+    }
+}
+
+// ========== EVENT LISTENERS ==========
+// Clique nos hambúrgueres
+burger1Div.addEventListener('click', () => coletarBurger(0));
+burger2Div.addEventListener('click', () => coletarBurger(1));
+
+// Teclas de atalho
+window.addEventListener('keydown', (e) => {
+    if(e.key === 'c' || e.key === 'C') {
+        marcarChapa();
+    }
+    if(e.key === 'b' || e.key === 'B') {
+        marcarBalcao();
+    }
+    if(e.key === 'e' || e.key === 'E') {
+        entregarNoBalcao();
+    }
+});
+
+// ========== LOOP PRINCIPAL OTIMIZADO ==========
+function loopCozinheiro() {
+    checkProximidade();
+    requestAnimationFrame(loopCozinheiro);
+}
+
+// ========== INSTRUÇÕES ==========
+setTimeout(() => {
+    mostrarMensagem(`
+        🍔 MODO COZINHEIRO 🍔
+        C - Marcar Chapa
+        B - Marcar Balcão
+        E - Entregar
+    `, '#ffaa00');
+}, 1000);
+
+// Inicia o loop
+loopCozinheiro();
+
+console.log('✅ MODO COZINHEIRO CARREGADO!');
