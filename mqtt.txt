@@ -1,0 +1,33 @@
+// MQTT Multiplayer com reconexão auto + log para depurar TV
+// Broker EMQX público - se TV falhar WS, reconecta a cada 5s
+
+function initMQTTTV() {
+    const mqttScript = document.createElement('script');
+    mqttScript.src = 'https://unpkg.com/mqtt@5.8.0/dist/mqtt.min.js';
+    mqttScript.onload = () => {
+        alert('MQTT carregado! Tente conectar. Veja o chat para logs.');
+        setupPanel();
+    };
+    document.head.appendChild(mqttScript);
+}
+
+function setupPanel() {
+    // Botão e painel iguais ao anterior, mas com log extra
+    // ... (copie o painel do script anterior, ou use o mesmo)
+
+    // Adicione isso no connectMQTT:
+    window.connectMQTT = function() {
+        // ... código anterior ...
+        client.on('connect', () => {
+            connected = true;
+            addChat('✅ CONECTADO! Broker EMQX OK.');
+            client.publish(`siri/${room}`, JSON.stringify({type: 'join', id: playerId, name: playerName}));
+        });
+
+        client.on('reconnect', () => addChat('Reconectando... (TV pode estar lenta no WS)'));
+        client.on('offline', () => addChat('Offline - verifique internet na TV'));
+        client.on('error', (err) => addChat('Erro: ' + (err.message || 'WS falhou na TV')));
+    };
+}
+
+initMQTTTV();
