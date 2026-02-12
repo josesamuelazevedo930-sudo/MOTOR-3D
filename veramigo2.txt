@@ -1,0 +1,203 @@
+if(document.getElementById('ui-multi')) document.getElementById('ui-multi').remove();
+
+const mqttScript = document.createElement('script');
+mqttScript.src = 'https://cdn.jsdelivr.net/npm/mqtt@4.1.0/dist/mqtt.min.js';
+document.head.appendChild(mqttScript);
+
+mqttScript.onload = () => {
+    setupMultiplayerMQTT();
+};
+
+function setupMultiplayerMQTT() {
+    const ui = document.createElement('div');
+    ui.id = 'ui-multi';
+    ui.style.cssText = "position:absolute; top:10px; left:10px; z-index:10000; font-family:sans-serif; background:rgba(0,0,0,0.95); padding:12px; border-radius:10px; border:2px solid #00ffff; color:white; width:240px;";
+    ui.innerHTML = `
+        <b style="color:#00ffff;">SIRI SCAN V15 - MULTIPLAYER</b><br>
+        <div id="setup-mp">
+            <input id="mp-name" placeholder="Seu Nome" style="width:90%; margin:5px 0; font-size:12px;">
+            <input id="mp-room" placeholder="Sala (ex: sala1)" style="width:90%; margin:5px 0; font-size:12px;">
+            <button id="btn-con" style="width:100%; padding:8px; background:#28a745; color:white; border:none; font-weight:bold; font-size:13px;">CONECTAR</button>
+        </div>
+        <div id="chat-area" style="display:none; margin-top:10px;">
+            <div id="chat-logs" style="height:160px; overflow-y:auto; font-size:11px; background:#000; color:#0f0; padding:6px; border-radius:6px;"></div>
+            <input type="text" id="chat-input" placeholder="Digite mensagem" style="width:70%; font-size:11px;">
+            <button id="btn-send" style="width:25%; font-size:11px;">ENVIAR</button>
+        </div>
+    `;
+    document.body.appendChild(ui);
+
+    let client, sala, meuNome;
+    let remotePlayers = {}; // id → THREE.Object3D
+    let targetScene = null;
+
+    // Função para encontrar a cena (mais agressiva)
+    function acharCena() {
+        if (typeof scene !== 'undefined' && scene && scene.isScene) return scene;
+        if (window.scene && window.scene.isScene) return window.scene;
+        if (window.game && window.game.scene && window.game.scene.isScene) return window.game.scene;
+        if (window.world && window.world.scene && window.world.scene.isScene) return window.world.scene;
+        if (window.player && window.player.parent && window.player.parent.isScene) return window.player.parent;
+
+        for (let key in window) {
+            if (window[key] && window[key].isScene) {
+                addLog("SISTEMA", "Cena encontrada via busca global: " + key);
+                return window[key];
+            }
+        }
+        return null;
+    }
+
+    document.getElementById('btn-con').onclick = () => {
+        meuNome = document.getElementById('mp-name').value.trim() || "Jog" + Math.floor(Math.random()*99);
+        sala = document.getElementById('mp-room').value.trim() || "1";
+        
+        client = mqtt.connect('wss://broker.emqx.io:8084/mqtt', {
+            clientId: 'siri-' + Math.random().toString(36).substr(2, 8)
+        });
+
+        client.on('connect', () => {
+            document.getElementById('setup-mp').style.display = 'none';
+            document.getElementById('chat-area').style.display = 'block';
+            client.subscribe('siri/multi/' + sala);
+            addLog("SISTEMA", "Conectado! Sala: " + sala);
+            addLog("SISTEMA", "Buscando cena 3D...");
+            targetScene = acharCena();
+            if (targetScene) {
+                addLog("SISTEMA", "Cena encontrada! Pode sincronizar players.");
+            } else {
+                addLog("SISTEMA", "Cena ainda não detectada. Mova o personagem para ajudar a encontrar.");
+            }
+            client.publish('siri/multi/' + sala, JSON.stringify({
+                type: 'join',
+                id: meuNome
+            }));
+        });
+
+        client.on('message', (topic, msg) => {
+            try {
+                const data = JSON.parse(msg.toString());
+                if (data.id === meuNome) return;
+
+                if (data.type === 'join') {
+                    addLog("SISTEMA", data.id + " entrou na sala!");
+                    createRemotePlayer(data.id);
+                } else if (data.type === 'sync') {
+                    handleRemoteSync(data);
+                } else if (data.type === 'chat') {
+                    addLog(data.id, data.text);
+                }
+            } catch (e) {
+                addLog("ERRO", "Falha parse: " + e.message);
+            }
+        });
+
+        client.on('error', (err) => addLog("ERRO MQTT", err.message || 'desconhecido'));
+    };
+
+    function createRemotePlayer(id) {
+        if (remotePlayers[id]) return;
+
+        addLog("SISTEMA", "Criando player remoto: " + id);
+
+        targetScene = targetScene || acharCena();
+        if (!targetScene) {
+            addLog("ERRO", "Cena não encontrada ainda - modelo não adicionado.");
+            return;
+        }
+
+        if (window.loaderGLTF && window.defaultSkins && window.defaultSkins[0] && window.defaultSkins[0].u) {
+            addLog("SISTEMA", "Carregando skin padrão do jogo...");
+            loaderGLTF.load(window.defaultSkins[0].u, (gltf) => {
+                const model = gltf.scene.clone();
+                const box = new THREE.Box3().setFromObject(model);
+                const size = box.getSize(new THREE.Vector3());
+                const scale = 8 / (size.y || 1);
+                model.scale.set(scale, scale, scale);
+                model.position.set(0, 50, 0); // posição inicial visível
+                targetScene.add(model);
+                remotePlayers[id] = model;
+                addLog("SISTEMA", "Modelo remoto adicionado com sucesso para " + id);
+            }, undefined, (err) => {
+                addLog("ERRO", "Falha ao carregar skin: " + err.message);
+                fallbackCubo(id); // fallback se falhar
+            });
+        } else {
+            addLog("ERRO", "loaderGLTF ou defaultSkins não encontrados.");
+            fallbackCubo(id);
+        }
+    }
+
+    function fallbackCubo(id) {
+        if (!targetScene) return;
+        const geo = new THREE.BoxGeometry(4, 8, 4);
+        const mat = new THREE.MeshBasicMaterial({color: 0xff00ff}); // rosa choque
+        const cube = new THREE.Mesh(geo, mat);
+        cube.position.set(0, 50, 0);
+        targetScene.add(cube);
+        remotePlayers[id] = cube;
+        addLog("SISTEMA", "Fallback: cubo rosa criado para " + id + " (skin falhou)");
+    }
+
+    function handleRemoteSync(data) {
+        if (!targetScene) targetScene = acharCena();
+        if (!targetScene) return;
+
+        const model = remotePlayers[data.id];
+        if (model) {
+            model.position.set(
+                parseFloat(data.x) || 0,
+                parseFloat(data.y) || 50,
+                parseFloat(data.z) || 0
+            );
+            model.rotation.y = parseFloat(data.ry) || 0;
+            // Log esporádico
+            if (Math.random() < 0.1) {
+                addLog("SYNC", data.id + " movido para " + data.x.toFixed(1) + ", " + data.y.toFixed(1));
+            }
+        }
+    }
+
+    setInterval(() => {
+        if (!client || !client.connected || !window.player) return;
+
+        const pos = player.position;
+        const rot = player.rotation.y;
+
+        if (Math.abs(pos.x - lastPos.x) > 0.3 || Math.abs(pos.y - lastPos.y) > 0.3 || 
+            Math.abs(pos.z - lastPos.z) > 0.3 || Math.abs(rot - lastRot) > 0.1) {
+            
+            client.publish('siri/multi/' + sala, JSON.stringify({
+                type: 'sync',
+                id: meuNome,
+                x: pos.x.toFixed(2),
+                y: pos.y.toFixed(2),
+                z: pos.z.toFixed(2),
+                ry: rot.toFixed(2)
+            }));
+
+            lastPos.copy(pos);
+            lastRot = rot;
+        }
+    }, 200);
+
+    function addLog(nick, msg) {
+        const logs = document.getElementById('chat-logs');
+        if (logs) {
+            logs.innerHTML += `<div style="margin:2px 0;"><b>${nick}:</b> ${msg}</div>`;
+            logs.scrollTop = logs.scrollHeight;
+        }
+    }
+
+    document.getElementById('btn-send').onclick = () => {
+        const inp = document.getElementById('chat-input');
+        if (!inp.value || !client || !client.connected) return;
+        client.publish('siri/multi/' + sala, JSON.stringify({
+            type: 'chat',
+            id: meuNome,
+            text: inp.value
+        }));
+        addLog("Você", inp.value);
+        inp.value = "";
+    };
+}
