@@ -1,0 +1,124 @@
+// 1. CARREGAMENTO DA BIBLIOTECA (Versão que funcionou na sua TV)
+if(document.getElementById('ui-multi')) document.getElementById('ui-multi').remove();
+
+const mqttScript = document.createElement('script');
+mqttScript.src = 'https://cdn.jsdelivr.net/npm/mqtt@4.1.0/dist/mqtt.min.js';
+document.head.appendChild(mqttScript);
+
+mqttScript.onload = () => {
+    setupMultiplayerMQTT();
+};
+
+function setupMultiplayerMQTT() {
+    // 2. INTERFACE COMPACTA
+    const ui = document.createElement('div');
+    ui.id = 'ui-multi';
+    ui.style.cssText = "position:absolute; top:10px; left:10px; z-index:10000; font-family:sans-serif; background:rgba(0,0,0,0.9); padding:12px; border-radius:10px; border:2px solid #00ffff; color:white; width:200px;";
+    ui.innerHTML = `
+        <b style="color:#00ffff;">SIRI MQTT ONLINE</b><br>
+        <div id="setup-mp">
+            <input id="mp-name" placeholder="Seu Nome" style="width:90%; margin:5px 0;">
+            <input id="mp-room" placeholder="Sala (ex: 123)" style="width:90%; margin:5px 0;">
+            <button id="btn-con" style="width:100%; padding:8px; background:green; color:white; border:none; font-weight:bold;">CONECTAR</button>
+        </div>
+        <div id="chat-area" style="display:none; margin-top:10px;">
+            <div id="chat-logs" style="height:80px; overflow-y:auto; font-size:11px; background:#000; padding:5px; border:1px solid #333; margin-bottom:5px; color:#0f0;"></div>
+            <div style="display:flex; gap:2px;">
+                <input type="text" id="chat-input" placeholder="Oi!" style="flex:1; background:#222; color:white; border:1px solid #444;">
+                <button id="btn-send" style="background:#007bff; color:white; border:none; padding:5px;">OK</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(ui);
+
+    let client, sala, meuNome;
+    let remotePlayers = {};
+    let lastSend = 0;
+
+    document.getElementById('btn-con').onclick = () => {
+        meuNome = document.getElementById('mp-name').value.trim() || "Player";
+        sala = document.getElementById('mp-room').value.trim() || "default";
+        
+        // Conexão via WebSocket (Broker gratuito estável)
+        client = mqtt.connect('wss://broker.emqx.io:8084/mqtt', {
+            clientId: 'siri-' + Math.random().toString(36).substr(2, 5)
+        });
+
+        client.on('connect', () => {
+            document.getElementById('setup-mp').style.display = 'none';
+            document.getElementById('chat-area').style.display = 'block';
+            client.subscribe('siri/multi/' + sala);
+            addLog("Sistema", "Conectado na sala " + sala);
+        });
+
+        client.on('message', (topic, msg) => {
+            try {
+                const data = JSON.parse(msg.toString());
+                if (data.id !== meuNome) {
+                    if (data.type === 'sync') handleRemoteSync(data);
+                    if (data.type === 'chat') addLog(data.id, data.text);
+                }
+            } catch (e) {}
+        });
+    };
+
+    // 3. LÓGICA DE SINCRONIZAÇÃO (BONECO E SKIN)
+    function handleRemoteSync(data) {
+        if (!remotePlayers[data.id]) {
+            // Cria um boneco inicial (cubo) enquanto carrega o GLB
+            const geo = new THREE.BoxGeometry(2, 5, 2);
+            remotePlayers[data.id] = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({color: 0x00ffff, wireframe: true}));
+            scene.add(remotePlayers[data.id]);
+
+            // Carrega a Skin GLB do amigo
+            if (window.loaderGLTF && data.skin) {
+                loaderGLTF.load(data.skin, (gltf) => {
+                    scene.remove(remotePlayers[data.id]);
+                    remotePlayers[data.id] = gltf.scene;
+                    scene.add(remotePlayers[data.id]);
+                });
+            }
+        }
+
+        // Move o boneco do amigo
+        if (remotePlayers[data.id]) {
+            remotePlayers[data.id].position.set(data.x, data.y, data.z);
+            remotePlayers[data.id].rotation.y = data.ry;
+        }
+    }
+
+    // Loop de envio de posição (200ms para poupar a TV)
+    setInterval(() => {
+        if (client && client.connected && window.player) {
+            client.publish('siri/multi/' + sala, JSON.stringify({
+                type: 'sync',
+                id: meuNome,
+                x: player.position.x,
+                y: player.position.y,
+                z: player.position.z,
+                ry: player.rotation.y,
+                skin: window.currentSkinUrl || ""
+            }));
+        }
+    }, 200);
+
+    // 4. CHAT
+    function addLog(nick, msg) {
+        const logs = document.getElementById('chat-logs');
+        logs.innerHTML += `<div><b>${nick}:</b> ${msg}</div>`;
+        logs.scrollTop = logs.scrollHeight;
+    }
+
+    document.getElementById('btn-send').onclick = () => {
+        const inp = document.getElementById('chat-input');
+        if (inp.value && client) {
+            client.publish('siri/multi/' + sala, JSON.stringify({
+                type: 'chat',
+                id: meuNome,
+                text: inp.value
+            }));
+            addLog("Eu", inp.value);
+            inp.value = "";
+        }
+    };
+}
