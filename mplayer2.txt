@@ -1,0 +1,177 @@
+if(document.getElementById('ui-multi')) document.getElementById('ui-multi').remove();
+
+const mqttScript = document.createElement('script');
+mqttScript.src = 'https://cdn.jsdelivr.net/npm/mqtt@4.1.0/dist/mqtt.min.js';
+document.head.appendChild(mqttScript);
+
+mqttScript.onload = () => { setupMultiplayerV6(); };
+
+function setupMultiplayerV6() {
+    // BOTÃO NO MENU
+    const btnMenu = document.createElement('button');
+    btnMenu.innerHTML = "M-PLAYER";
+    btnMenu.style.cssText = "position:absolute; right:20px; top:240px; width:110px; padding:12px; color:white; border:none; font-weight:bold; border-radius:8px; z-index:1001; background:#ff00ff; box-shadow:0 4px #000; cursor:pointer;";
+    btnMenu.onclick = () => {
+        const p = document.getElementById('ui-multi');
+        p.style.display = p.style.display === 'none' ? 'block' : 'none';
+    };
+    document.body.appendChild(btnMenu);
+
+    // PAINEL
+    const ui = document.createElement('div');
+    ui.id = 'ui-multi';
+    ui.style.cssText = "position:absolute; right:20px; top:295px; width:250px; background:rgba(0,0,0,0.95); border-radius:12px; padding:15px; color:white; border:1px solid #ff00ff; z-index:1000; display:none; font-family:sans-serif;";
+    ui.innerHTML = `
+        <div style="color:#ff00ff; font-weight:bold; text-align:center; margin-bottom:10px;">🌐 MULTIPLAYER V6</div>
+        <div id="setup-mp">
+            <input id="mp-name" placeholder="Nome" style="width:90%; padding:8px; margin-bottom:5px; background:#222; color:#fff; border:1px solid #444;">
+            <input id="mp-room" placeholder="Sala" value="1" style="width:90%; padding:8px; margin-bottom:10px; background:#222; color:#fff; border:1px solid #444;">
+            <button id="btn-con" style="width:100%; padding:10px; background:#ff00ff; color:black; font-weight:bold; border-radius:6px;">CONECTAR</button>
+        </div>
+        <div id="mp-active" style="display:none;">
+            <div id="chat-logs" style="height:80px; overflow-y:auto; font-size:11px; background:#111; color:#0ff; padding:8px; border:1px solid #333;"></div>
+            <div style="display:flex; margin-top:10px; gap:5px;">
+                <input id="chat-in" placeholder="Diga algo..." style="flex:1; background:#222; color:#fff; border:1px solid #444; padding:5px;">
+                <button id="btn-send" style="padding:5px 10px; background:#0ff; color:#000; font-weight:bold; border:none;">OK</button>
+            </div>
+            <div id="st-count" style="font-size:9px; color:#aaa; margin-top:8px; text-align:center;">👥 JOGADORES: 0</div>
+        </div>
+    `;
+    document.body.appendChild(ui);
+
+    let client, sala, meuNome, remotePlayers = {};
+    const jScene = window.scene || scene;
+    const loader = window.loaderGLTF || new THREE.GLTFLoader();
+
+    // FUNÇÃO PARA CRIAR O TEXTO DA MENSAGEM (IGUAL AO NICK)
+    function mostrarTextoMensagem(playerObj, texto) {
+        if (playerObj.msgSprite) playerObj.remove(playerObj.msgSprite);
+        
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = 512; canvas.height = 64; // Canvas largo para frases
+        
+        ctx.fillStyle = 'white';
+        ctx.font = 'bold 45px Arial'; // Maior que o Nick
+        ctx.textAlign = 'center';
+        ctx.fillText(texto, 256, 45);
+
+        const tex = new THREE.CanvasTexture(canvas);
+        const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex }));
+        
+        sprite.scale.set(12, 1.5, 1); // Escala maior
+        sprite.position.y = 13; // Fica acima do Nick (que está no 10)
+        
+        playerObj.add(sprite);
+        playerObj.msgSprite = sprite;
+
+        // Auto-remover após 6 segundos
+        setTimeout(() => {
+            if (playerObj.msgSprite === sprite) {
+                playerObj.remove(sprite);
+                playerObj.msgSprite = null;
+            }
+        }, 6000);
+    }
+
+    function criarAvatarRemoto(id) {
+        const grupo = new THREE.Group();
+        
+        // Modelo GLB
+        loader.load('https://threejs.org/examples/models/gltf/Soldier.glb', (gltf) => {
+            const model = gltf.scene;
+            model.scale.set(5, 5, 5);
+            grupo.add(model);
+        });
+
+        // INDICADOR DE NICK (Rosa)
+        const canvasN = document.createElement('canvas');
+        const ctxN = canvasN.getContext('2d');
+        canvasN.width = 256; canvasN.height = 64;
+        ctxN.fillStyle = '#ff00ff'; ctxN.font = 'bold 30px Arial'; ctxN.textAlign = 'center';
+        ctxN.fillText(id, 128, 45);
+        const texN = new THREE.CanvasTexture(canvasN);
+        const labelN = new THREE.Sprite(new THREE.SpriteMaterial({ map: texN }));
+        labelN.scale.set(6, 1.5, 1);
+        labelN.position.y = 10;
+        grupo.add(labelN);
+
+        jScene.add(grupo);
+        return grupo;
+    }
+
+    document.getElementById('btn-con').onclick = () => {
+        meuNome = document.getElementById('mp-name').value || "User" + Math.floor(Math.random()*99);
+        sala = document.getElementById('mp-room').value || "1";
+        document.getElementById('setup-mp').style.display = 'none';
+        document.getElementById('mp-active').style.display = 'block';
+
+        client = mqtt.connect('wss://broker.emqx.io:8084/mqtt', { clientId: 'siri_' + Math.random().toString(36).substr(2, 5) });
+
+        client.on('connect', () => {
+            client.subscribe('siri/multi/' + sala);
+            addLog("SISTEMA", "Online na sala " + sala);
+        });
+
+        client.on('message', (topic, msg) => {
+            try {
+                const data = JSON.parse(msg.toString());
+                if (data.id === meuNome) return;
+
+                if (data.type === 'sync') {
+                    if (!remotePlayers[data.id]) {
+                        remotePlayers[data.id] = criarAvatarRemoto(data.id);
+                        updateCounter();
+                    }
+                    remotePlayers[data.id].position.set(data.x, data.y, data.z);
+                    remotePlayers[data.id].rotation.y = data.ry || 0;
+                    remotePlayers[data.id].lastSeen = Date.now();
+                }
+                
+                if (data.type === 'chat') {
+                    addLog(data.id, data.text);
+                    if (remotePlayers[data.id]) {
+                        mostrarTextoMensagem(remotePlayers[data.id], data.text);
+                    }
+                }
+            } catch(e){}
+        });
+    };
+
+    setInterval(() => {
+        const pLocal = window.player || player;
+        if (client && client.connected && pLocal) {
+            client.publish('siri/multi/' + sala, JSON.stringify({
+                type: 'sync', id: meuNome,
+                x: pLocal.position.x, y: pLocal.position.y, z: pLocal.position.z,
+                ry: pLocal.rotation.y
+            }));
+        }
+        for(let id in remotePlayers) {
+            if(Date.now() - remotePlayers[id].lastSeen > 5000) {
+                jScene.remove(remotePlayers[id]);
+                delete remotePlayers[id];
+                updateCounter();
+            }
+        }
+    }, 100);
+
+    function addLog(n, t) {
+        const logs = document.getElementById('chat-logs');
+        logs.innerHTML += `<div><b style="color:#ff00ff">${n}:</b> ${t}</div>`;
+        logs.scrollTop = logs.scrollHeight;
+    }
+
+    function updateCounter() {
+        document.getElementById('st-count').innerText = "👥 JOGADORES: " + Object.keys(remotePlayers).length;
+    }
+
+    document.getElementById('btn-send').onclick = () => {
+        const i = document.getElementById('chat-in');
+        if(i.value && client) {
+            client.publish('siri/multi/' + sala, JSON.stringify({ type: 'chat', id: meuNome, text: i.value }));
+            addLog("Eu", i.value);
+            i.value = "";
+        }
+    };
+}
