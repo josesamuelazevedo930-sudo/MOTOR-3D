@@ -1,0 +1,94 @@
+if(document.getElementById('ui-multi')) document.getElementById('ui-multi').remove();
+
+const mqttScript = document.createElement('script');
+mqttScript.src = 'https://cdn.jsdelivr.net/npm/mqtt@4.1.0/dist/mqtt.min.js';
+document.head.appendChild(mqttScript);
+
+mqttScript.onload = () => { setupV29(); };
+
+function setupV29() {
+    // 1. INTERFACE DE CONTROLE
+    const ui = document.createElement('div');
+    ui.id = 'ui-multi';
+    ui.style.cssText = "position:absolute; top:10px; left:10px; z-index:2000; font-family:sans-serif; background:rgba(0,0,0,0.9); padding:10px; border-radius:10px; border:2px solid #00ffff; color:white; width:200px;";
+    ui.innerHTML = `
+        <b style="color:#00ffff;">SIRI MULTI V29</b><br>
+        <div id="mp-setup">
+            <input id="mp-room" placeholder="Sala" style="width:90%; margin:5px 0; background:#222; color:white; border:1px solid #444; padding:5px;">
+            <button id="btn-con" style="width:100%; padding:8px; background:green; color:white; border:none; font-weight:bold; border-radius:5px;">ENTRAR</button>
+        </div>
+        <div id="mp-active" style="display:none; margin-top:5px;">
+            <div id="chat-logs" style="height:60px; overflow:auto; font-size:10px; background:#000; color:#0f0; padding:5px;"></div>
+            <div id="st-debug" style="font-size:10px; color:#ffff00; margin-top:5px;">Status: Localizando Player...</div>
+        </div>
+    `;
+    document.body.appendChild(ui);
+
+    let client, sala, meuID = "P-" + Math.floor(Math.random()*999);
+    let cubosRemotos = {};
+
+    document.getElementById('btn-con').onclick = () => {
+        sala = document.getElementById('mp-room').value || "1";
+        client = mqtt.connect('wss://broker.emqx.io:8084/mqtt', { clientId: meuID });
+
+        client.on('connect', () => {
+            document.getElementById('mp-setup').style.display = 'none';
+            document.getElementById('mp-active').style.display = 'block';
+            client.subscribe('siri/multi/' + sala);
+            addLog("SISTEMA", "Conectado à sala " + sala);
+        });
+
+        client.on('message', (topic, msg) => {
+            try {
+                const data = JSON.parse(msg.toString());
+                if (data.id !== meuID) syncMotor(data);
+            } catch (e) {}
+        });
+    };
+
+    // 2. MOTOR DE RENDERIZAÇÃO (Adiciona o Cubo na Cena)
+    function syncMotor(data) {
+        if (!window.scene) return;
+
+        if (!cubosRemotos[data.id]) {
+            addLog("SISTEMA", "Player " + data.id + " apareceu!");
+            
+            // Cria um Cubo Neon Ciano (Como o seu jogo é Draco, o cubo é mais leve)
+            const geo = new THREE.BoxGeometry(5, 10, 5); 
+            const mat = new THREE.MeshBasicMaterial({ color: 0x00ffff });
+            const mesh = new THREE.Mesh(geo, mat);
+            
+            // Adiciona na cena global do seu jogo
+            window.scene.add(mesh);
+            cubosRemotos[data.id] = mesh;
+        }
+
+        // Atualiza posição baseada no que veio do chat do outro player
+        cubosRemotos[data.id].position.set(data.x, data.y, data.z);
+        if(data.ry) cubosRemotos[data.id].rotation.y = data.ry;
+        
+        document.getElementById('st-debug').innerText = "Motor: Recebendo " + data.id;
+    }
+
+    // 3. LOOP DE ENVIO (Pega os dados da variável 'player' do seu código)
+    setInterval(() => {
+        if (client && client.connected) {
+            if (window.player) {
+                const p = window.player.position;
+                const r = window.player.rotation.y;
+                client.publish('siri/multi/' + sala, JSON.stringify({
+                    id: meuID, x: p.x, y: p.y, z: p.z, ry: r
+                }));
+                document.getElementById('st-debug').innerText = "📡 GPS: Transmitindo...";
+            } else {
+                document.getElementById('st-debug').innerText = "⚠️ Aguardando Player nascer...";
+            }
+        }
+    }, 150);
+
+    function addLog(nick, msg) {
+        const logs = document.getElementById('chat-logs');
+        logs.innerHTML += `<div><b>${nick}:</b> ${msg}</div>`;
+        logs.scrollTop = logs.scrollHeight;
+    }
+}
