@@ -1,0 +1,92 @@
+if(document.getElementById('ui-multi')) document.getElementById('ui-multi').remove();
+
+const mqttScript = document.createElement('script');
+mqttScript.src = 'https://cdn.jsdelivr.net/npm/mqtt@4.1.0/dist/mqtt.min.js';
+document.head.appendChild(mqttScript);
+
+mqttScript.onload = () => { setupV26(); };
+
+function setupV26() {
+    const ui = document.createElement('div');
+    ui.id = 'ui-multi';
+    ui.style.cssText = "position:absolute; top:10px; left:10px; z-index:10000; font-family:sans-serif; background:rgba(0,0,0,0.9); padding:10px; border-radius:10px; border:2px solid #00ff00; color:white; width:220px;";
+    ui.innerHTML = `
+        <b style="color:#00ff00;">SIRI V26 - GPS TRACKER</b><br>
+        <input id="mp-room" placeholder="Sala" style="width:90%; margin:5px 0; background:#222; color:white; border:1px solid #444;">
+        <button id="btn-con" style="width:100%; padding:8px; background:green; color:white; border:none; font-weight:bold;">ATIVAR SINCRONIA</button>
+        <div id="st-monitor" style="font-size:10px; color:#aaa; margin-top:5px;">Aguardando conexão...</div>
+    `;
+    document.body.appendChild(ui);
+
+    let client, sala, meuID = "P-" + Math.floor(Math.random()*999);
+    let remoteAvatars = {};
+    const MODELO_AMIGO = "https://threejs.org/examples/models/gltf/RobotExpressive/RobotExpressive.glb";
+
+    document.getElementById('btn-con').onclick = () => {
+        sala = document.getElementById('mp-room').value || "1";
+        client = mqtt.connect('wss://broker.emqx.io:8084/mqtt', { clientId: meuID });
+
+        client.on('connect', () => {
+            document.getElementById('st-monitor').innerText = "✅ GPS Ativo na Sala " + sala;
+            client.subscribe('siri/gps/' + sala);
+        });
+
+        client.on('message', (topic, msg) => {
+            try {
+                const data = JSON.parse(msg.toString());
+                if (data.id !== meuID) updateRemotePlayer(data);
+            } catch (e) {}
+        });
+    };
+
+    function updateRemotePlayer(data) {
+        // Se a cena ainda não foi capturada, tentamos pegar a do player local
+        let currentScene = window.scene || (window.player && window.player.parent);
+
+        if (!currentScene) {
+            document.getElementById('st-monitor').innerText = "⚠️ Erro: Não vejo o mundo 3D!";
+            return;
+        }
+
+        if (!remoteAvatars[data.id]) {
+            document.getElementById('st-monitor').innerText = "📡 Amigo detectado!";
+            
+            // Criar algo visível IMEDIATAMENTE (Uma pirâmide neon)
+            const geo = new THREE.ConeGeometry(2, 6, 4);
+            const mat = new THREE.MeshBasicMaterial({ color: 0x00ff00, wireframe: true });
+            const mesh = new THREE.Mesh(geo, mat);
+            currentScene.add(mesh);
+            remoteAvatars[data.id] = mesh;
+
+            // Tentar trocar pelo Robô
+            if (window.loaderGLTF) {
+                window.loaderGLTF.load(MODELO_AMIGO, (gltf) => {
+                    currentScene.remove(mesh);
+                    const model = gltf.scene;
+                    model.scale.set(4, 4, 4);
+                    currentScene.add(model);
+                    remoteAvatars[data.id] = model;
+                });
+            }
+        }
+
+        // Move o objeto para as coordenadas recebidas pelo chat
+        if (remoteAvatars[data.id]) {
+            remoteAvatars[data.id].position.set(data.x, data.y, data.z);
+            remoteAvatars[data.id].rotation.y = data.ry;
+        }
+    }
+
+    // LOOP DE ENVIO - Pega a posição "colada" no player
+    setInterval(() => {
+        if (client && client.connected && window.player) {
+            client.publish('siri/gps/' + sala, JSON.stringify({
+                id: meuID,
+                x: window.player.position.x,
+                y: window.player.position.y,
+                z: window.player.position.z,
+                ry: window.player.rotation.y
+            }));
+        }
+    }, 150);
+}
