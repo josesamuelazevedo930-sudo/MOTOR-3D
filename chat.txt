@@ -1,0 +1,193 @@
+// Script Multiplayer PÚBLICO com SocketsBay.com (canais isolados por sala! FREE, sem setup)
+// Digite MESMO nome de SALA em ambos os jogos → conectam no mesmo canal privado.
+// Painel PEQUENO no canto SUPERIOR DIREITO.
+// Testado: broadcast funciona dentro do canal (/v2/ID/demo/)
+
+function hashCode(str) {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+        hash = ((hash << 5) - hash) + str.charCodeAt(i);
+        hash = hash & hash;
+    }
+    return Math.abs(hash) % 9999999 + 1;
+}
+
+function initPublicMultiplayer() {
+    // Painel MENOR
+    const style = document.createElement('style');
+    style.innerHTML = `
+        #op-panel { width: 220px !important; max-height: 35vh !important; top: 240px !important; }
+        #op-chat { max-height: 150px; overflow-y: auto; font-size: 11px; color: #fff; background: #222; padding: 8px; border-radius: 6px; margin: 5px 0; }
+    `;
+    document.head.appendChild(style);
+
+    // Botão ONLINE (depois do IMPORT)
+    var btn = document.createElement('button');
+    btn.id = 'op-btn';
+    btn.className = 'ui-btn';
+    btn.style.background = '#9932CC';
+    btn.style.top = '185px';
+    btn.innerText = 'ONLINE';
+    btn.onclick = () => tgl('op-panel');
+    document.body.appendChild(btn);
+
+    // Painel PEQUENO
+    var panel = document.createElement('div');
+    panel.id = 'op-panel';
+    panel.className = 'panel';
+    panel.style.top = '240px';
+    panel.style.display = 'none';
+    document.body.appendChild(panel);
+    panel.innerHTML = `
+        <p style="font-size:11px;margin:0 0 2px 0;">NOME:</p>
+        <input type="text" id="p-name" placeholder="Jog1" style="font-size:12px;">
+        <p style="font-size:11px;margin:5px 0 2px 0;">SALA:</p>
+        <input type="text" id="p-room" placeholder="sala1" style="font-size:12px;">
+        <button class="opt" onclick="connectPublic()" style="background:#28a745;font-size:11px;">🔗 CONECTAR</button>
+        <button class="opt" onclick="disconnectPublic()" style="background:#ff3333;font-size:11px;">❌ SAIR</button>
+        <hr style="margin:8px 0;">
+        <div id="op-chat"></div>
+        <input type="text" id="p-msg" placeholder="Msg..." style="font-size:11px;">
+        <button class="opt" onclick="sendPublicMsg()" style="background:#007bff;font-size:11px;">📤</button>
+    `;
+
+    // VARIÁVEIS GLOBAIS
+    let ws = null;
+    let room = '';
+    let playerName = '';
+    let otherPlayers = {};
+    let connected = false;
+    let lastPosition = new THREE.Vector3();
+    let lastRotation = 0;
+    let lastUpdateTime = 0;
+    const UPDATE_MS = 80; // 12x/seg, leve
+
+    window.connectPublic = function() {
+        playerName = document.getElementById('p-name').value.trim() || 'Jog' + Math.floor(Math.random()*999);
+        room = document.getElementById('p-room').value.trim() || 'default';
+        if (connected || !player || !player.position) return alert('Carregue skin primeiro!');
+
+        const channelId = hashCode(room);
+        const wsUrl = `wss://socketsbay.com/wss/v2/${channelId}/demo/`;
+        addChat(`Conectando sala "${room}" (canal ${channelId})...`);
+
+        ws = new WebSocket(wsUrl);
+        ws.onopen = function() {
+            connected = true;
+            addChat('✅ Conectado! Aguardando jogadores...');
+            lastPosition.copy(player.position);
+            lastRotation = player.rotation.y;
+            // Join com pos inicial
+            send({ type: 'join', name: playerName, x: player.position.x, y: player.position.y, z: player.position.z, rot: player.rotation.y });
+        };
+        ws.onmessage = function(event) {
+            try {
+                const data = JSON.parse(event.data);
+                if (data.type === 'join' && data.name !== playerName) {
+                    loadOtherPlayer(data.name, data.x, data.y, data.z, data.rot);
+                    addChat(`👤 ${data.name} entrou!`);
+                } else if (data.type === 'move' && data.name !== playerName && otherPlayers[data.name]) {
+                    const op = otherPlayers[data.name];
+                    op.model.position.set(data.x, data.y, data.z);
+                    op.model.rotation.y = data.rot;
+                } else if (data.type === 'msg' && data.room === room) {
+                    addChat(`${data.name}: ${data.text}`);
+                } else if (data.type === 'leave' && data.name !== playerName && otherPlayers[data.name]) {
+                    scene.remove(otherPlayers[data.name].model);
+                    delete otherPlayers[data.name];
+                    addChat(`👋 ${data.name} saiu.`);
+                }
+            } catch(e) {}
+        };
+        ws.onclose = function() {
+            connected = false;
+            addChat('❌ Desconectado.');
+            clearOthers();
+        };
+        ws.onerror = function() {
+            addChat('❌ Erro conexão. Tente outra sala.');
+        };
+    };
+
+    window.disconnectPublic = function() {
+        if (ws) {
+            send({ type: 'leave', name: playerName });
+            ws.close();
+            ws = null;
+        }
+        connected = false;
+        clearOthers();
+        addChat('Desconectado.');
+    };
+
+    window.sendPublicMsg = function() {
+        const msg = document.getElementById('p-msg').value.trim();
+        if (!msg || !connected) return;
+        send({ type: 'msg', name: playerName, text: msg, room: room });
+        document.getElementById('p-msg').value = '';
+    };
+
+    function send(data) {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify(data));
+        }
+    }
+
+    function addChat(msg) {
+        const div = document.getElementById('op-chat');
+        div.innerHTML += `<p style="margin:2px 0;font-size:11px;">${msg}</p>`;
+        div.scrollTop = div.scrollHeight;
+    }
+
+    function loadOtherPlayer(name, x, y, z, rot) {
+        if (otherPlayers[name]) return;
+        loaderGLTF.load(defaultSkins[0].u, (gltf) => {
+            const model = gltf.scene.clone();
+            const box = new THREE.Box3().setFromObject(model);
+            const s = 8 / (box.getSize(new THREE.Vector3()).y || 1);
+            model.scale.set(s, s, s);
+            model.position.set(x, y, z);
+            model.rotation.y = rot;
+            scene.add(model);
+            otherPlayers[name] = { model };
+        });
+    }
+
+    function clearOthers() {
+        Object.keys(otherPlayers).forEach(name => {
+            scene.remove(otherPlayers[name].model);
+        });
+        otherPlayers = {};
+    }
+
+    // SOBRESCREVER ANIMATE (throttled updates)
+    const originalAnimate = animate;
+    window.animate = function() {
+        originalAnimate();
+        if (connected && ws && ws.readyState === WebSocket.OPEN && player) {
+            const now = Date.now();
+            const dist = player.position.distanceTo(lastPosition);
+            const rotDiff = Math.abs(player.rotation.y - lastRotation);
+            if (now - lastUpdateTime > UPDATE_MS && (dist > 0.05 || rotDiff > 0.02)) {
+                send({
+                    type: 'move',
+                    name: playerName,
+                    x: player.position.x,
+                    y: player.position.y,
+                    z: player.position.z,
+                    rot: player.rotation.y
+                });
+                lastPosition.copy(player.position);
+                lastRotation = player.rotation.y;
+                lastUpdateTime = now;
+            }
+        }
+    };
+
+    window.addEventListener('beforeunload', () => {
+        if (connected && ws) send({ type: 'leave', name: playerName });
+    });
+}
+
+initPublicMultiplayer();
+addEventListener('load', () => alert('✅ ONLINE CARREGADO! Digite NOME/SALA iguais nos 2 jogos → CONECTAR!'));
