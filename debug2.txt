@@ -1,0 +1,80 @@
+// MQTT Multiplayer com MQTT.js v4.1.0 (mais compatível com browsers antigos/TV)
+// CDN jsDelivr (mais confiável que unpkg em alguns casos)
+// Logs extras para ver se script carrega
+
+function loadOldMQTT() {
+    const script = document.createElement('script');
+    script.src = 'https://cdn.jsdelivr.net/npm/mqtt@4.1.0/dist/mqtt.min.js';
+    script.onload = () => {
+        alert('MQTT v4 carregado OK! Tente conectar.');
+        setupOldMQTT();
+    };
+    script.onerror = () => {
+        alert('Falha ao carregar MQTT.js na TV! Navegador bloqueia CDN ou WS.');
+        logTV('Erro: mqtt.js não carregou (cdn.jsdelivr.net bloqueado?)');
+    };
+    document.head.appendChild(script);
+}
+
+function setupOldMQTT() {
+    // Botão e painel simples
+    const btn = document.createElement('button');
+    btn.className = 'ui-btn';
+    btn.style.background = '#28a745';
+    btn.style.top = '185px';
+    btn.innerText = 'MQTT TV OLD';
+    btn.onclick = () => tgl('mqtt-old-panel');
+    document.body.appendChild(btn);
+
+    const panel = document.createElement('div');
+    panel.id = 'mqtt-old-panel';
+    panel.className = 'panel';
+    panel.style.top = '240px';
+    panel.style.display = 'none';
+    document.body.appendChild(panel);
+    panel.innerHTML = `
+        <p style="font-size:11px;color:#ff0;">LOG TV:</p>
+        <div id="mqtt-old-log" style="max-height:200px;overflow-y:auto;font-size:10px;background:#000;color:#0f0;padding:5px;border-radius:6px;"></div>
+        <p style="font-size:11px;margin:5px 0;">Nome:</p>
+        <input id="old-name" placeholder="Samuel" style="width:95%;">
+        <p style="font-size:11px;margin:5px 0;">Sala:</p>
+        <input id="old-room" placeholder="sala1" style="width:95%;">
+        <button class="opt" onclick="connectOldMQTT()" style="background:#28a745;font-size:11px;">CONECTAR</button>
+    `;
+
+    window.connectOldMQTT = function() {
+        const name = document.getElementById('old-name').value.trim() || 'TVJog';
+        const room = document.getElementById('old-room').value.trim() || 'default';
+        logOld('Tentando conectar...');
+
+        try {
+            const client = mqtt.connect('wss://broker.emqx.io:8084/mqtt', {
+                clientId: 'tv-' + Math.random().toString(36).substr(2, 5)
+            });
+            logOld('Client criado.');
+
+            client.on('connect', () => {
+                logOld('✅ Conectado! (WS OK)');
+                client.subscribe('siri/' + room);
+                client.publish('siri/' + room, JSON.stringify({type: 'join', name: name}));
+            });
+
+            client.on('message', (topic, msg) => {
+                logOld('Mensagem: ' + msg.toString());
+            });
+
+            client.on('error', (err) => logOld('Erro conexão: ' + err.message));
+        } catch (e) {
+            logOld('Erro geral: ' + e.message);
+        }
+    };
+
+    function logOld(msg) {
+        const div = document.getElementById('mqtt-old-log');
+        div.innerHTML += `<p>${msg}</p>`;
+        div.scrollTop = div.scrollHeight;
+    }
+}
+
+loadOldMQTT();
+alert('Script MQTT TV OLD carregado! Clique MQTT TV OLD → CONECTAR. Veja o log para depurar erro na TV.');
