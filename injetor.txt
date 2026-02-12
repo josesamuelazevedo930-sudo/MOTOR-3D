@@ -1,0 +1,91 @@
+// 1. FORÇAR A CRIAÇÃO DA VARIÁVEL DE CENA NA MEMÓRIA DA TV
+if (typeof window.scene === 'undefined') {
+    window.scene = new THREE.Scene(); 
+    console.log("Cena criada pelo script!");
+}
+
+// 2. LIMPEZA DE INTERFACE
+if(document.getElementById('ui-multi')) document.getElementById('ui-multi').remove();
+
+// 3. CARREGAR MQTT (A conexão que funcionou na sua TV)
+const mqttScript = document.createElement('script');
+mqttScript.src = 'https://cdn.jsdelivr.net/npm/mqtt@4.1.0/dist/mqtt.min.js';
+document.head.appendChild(mqttScript);
+
+mqttScript.onload = () => {
+    setupFinalUSB();
+};
+
+function setupFinalUSB() {
+    const ui = document.createElement('div');
+    ui.id = 'ui-multi';
+    ui.style.cssText = "position:absolute; top:10px; left:10px; z-index:10000; font-family:sans-serif; background:rgba(0,0,0,0.9); padding:10px; border-radius:10px; border:2px solid #ff00ff; color:white; width:190px;";
+    ui.innerHTML = `
+        <b style="color:#ff00ff;">SIRI FINAL V16</b><br>
+        <input id="mp-room" placeholder="Nº da Sala" style="width:85%; margin:5px 0;">
+        <button id="btn-con" style="width:100%; padding:8px; background:#ff00ff; color:white; border:none; font-weight:bold;">CONECTAR</button>
+        <div id="status-debug" style="font-size:10px; color:#0f0; margin-top:5px;">Aguardando...</div>
+    `;
+    document.body.appendChild(ui);
+
+    let client, sala, meuID = "Player-" + Math.floor(Math.random()*999);
+    let remotePlayers = {};
+
+    document.getElementById('btn-con').onclick = () => {
+        sala = document.getElementById('mp-room').value || "1";
+        client = mqtt.connect('wss://broker.emqx.io:8084/mqtt', { clientId: meuID });
+
+        client.on('connect', () => {
+            document.getElementById('status-debug').innerText = "✅ ONLINE NA SALA " + sala;
+            client.subscribe('siri/usb/' + sala);
+        });
+
+        client.on('message', (topic, msg) => {
+            const data = JSON.parse(msg.toString());
+            if (data.id !== meuID) renderAmigo(data);
+        });
+    };
+
+    function renderAmigo(data) {
+        // Usa a cena que forçamos no início do script
+        let target = window.scene;
+
+        if (!remotePlayers[data.id]) {
+            // Criar um boneco impossível de não ver: Esfera Rosa Brilhante
+            const geo = new THREE.SphereGeometry(2, 16, 16);
+            const mat = new THREE.MeshBasicMaterial({ color: 0xff00ff }); 
+            remotePlayers[data.id] = new THREE.Mesh(geo, mat);
+            
+            // ADICIONAR NA CENA
+            target.add(remotePlayers[data.id]);
+            document.getElementById('status-debug').innerText = "Amigo visualizado!";
+            
+            // Tenta trocar pelo modelo 3D real
+            if (window.loaderGLTF && data.skin) {
+                loaderGLTF.load(data.skin, (gltf) => {
+                    target.remove(remotePlayers[data.id]);
+                    remotePlayers[data.id] = gltf.scene;
+                    target.add(remotePlayers[data.id]);
+                });
+            }
+        }
+
+        // Atualizar posição recebida do celular
+        remotePlayers[data.id].position.set(parseFloat(data.x), parseFloat(data.y), parseFloat(data.z));
+        remotePlayers[data.id].rotation.y = parseFloat(data.ry);
+    }
+
+    // Enviar minha posição para o celular
+    setInterval(() => {
+        if (client && client.connected && window.player) {
+            client.publish('siri/usb/' + sala, JSON.stringify({
+                id: meuID,
+                x: player.position.x,
+                y: player.position.y,
+                z: player.position.z,
+                ry: player.rotation.y,
+                skin: window.currentSkinUrl || ""
+            }));
+        }
+    }, 150);
+}
