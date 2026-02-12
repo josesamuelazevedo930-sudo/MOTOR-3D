@@ -1,0 +1,124 @@
+// 1. LIMPEZA E ESTILOS TÉCNICOS
+if(document.getElementById('chef-ui')) document.getElementById('chef-ui').remove();
+const styleChef = document.createElement('style');
+styleChef.innerHTML = `
+    #chef-ui { position: absolute; top: 10px; right: 10px; width: 200px; background: rgba(0,0,0,0.8); color: #0ff; padding: 10px; border: 2px solid #0ff; font-family: monospace; z-index: 10000; border-radius: 5px; }
+    .bar-bg { width: 100%; height: 10px; background: #333; margin-top: 5px; border-radius: 5px; overflow: hidden; }
+    #bar-fill { width: 0%; height: 100%; background: #0f0; transition: 0.1s; }
+    .btn-chef { width: 100%; background: #222; color: #fff; border: 1px solid #555; margin-top: 5px; cursor: pointer; font-size: 10px; }
+`;
+document.head.appendChild(styleChef);
+
+// 2. INTERFACE
+const chefUI = document.createElement('div');
+chefUI.id = 'chef-ui';
+chefUI.innerHTML = `
+    <div style="text-align:center; font-weight:bold;">SIRI CHEF V4</div>
+    <div id="chef-money" style="color:#0f0;">MOEDAS: $0</div>
+    <div id="chef-msg" style="font-size:10px; margin:5px 0;">Aguardando...</div>
+    <div class="bar-bg"><div id="bar-fill"></div></div>
+    <button class="btn-chef" onclick="marcar('chapa')">SALVAR CHAPA</button>
+    <button class="btn-chef" onclick="marcar('balcao')">SALVAR BALCAO</button>
+    <button class="btn-chef" style="background:#055;" onclick="resetarDados()">RESETAR LOCAIS</button>
+`;
+document.body.appendChild(chefUI);
+
+// 3. LÓGICA DE MEMÓRIA (SALVAR LOCAIS)
+let dados = JSON.parse(localStorage.getItem('siriChefData')) || { chapa: null, balcao: null, grana: 0 };
+let fase = "INICIO"; // INICIO, PEGAR, FRITAR, PRONTO, QUEIMADO
+let progresso = 0;
+
+function atualizarUI() {
+    document.getElementById('chef-money').innerText = "MOEDAS: $" + dados.grana;
+    localStorage.setItem('siriChefData', JSON.stringify(dados));
+}
+atualizarUI();
+
+window.marcar = (tipo) => {
+    const p = window.player || player;
+    dados[tipo] = { x: p.position.x, z: p.position.z };
+    document.getElementById('chef-msg').innerText = tipo.toUpperCase() + " SALVO!";
+    atualizarUI();
+};
+
+window.resetarDados = () => {
+    localStorage.removeItem('siriChefData');
+    location.reload();
+};
+
+// 4. SISTEMA DE JOGO (LOOP)
+setInterval(() => {
+    if(!dados.chapa || !dados.balcao) {
+        document.getElementById('chef-msg').innerText = "Marque os 2 locais!";
+        return;
+    }
+
+    const p = window.player || player;
+    if(!p) return;
+
+    // Distâncias
+    const dChapa = Math.sqrt(Math.pow(p.position.x - dados.chapa.x, 2) + Math.pow(p.position.z - dados.chapa.z, 2));
+    const dBalcao = Math.sqrt(Math.pow(p.position.x - dados.balcao.x, 2) + Math.pow(p.position.z - dados.balcao.z, 2));
+
+    const msg = document.getElementById('chef-msg');
+    const bar = document.getElementById('bar-fill');
+
+    if(fase === "INICIO") {
+        fase = "PEGAR";
+        msg.innerText = "VA AO BALCAO!";
+    }
+
+    // AÇÕES
+    if(fase === "PEGAR" && dBalcao < 5) {
+        fase = "FRITAR";
+        msg.innerText = "CORRA PARA A CHAPA!";
+        msg.style.color = "#fff";
+        progresso = 0;
+    }
+
+    if(fase === "FRITAR" && dChapa < 5) {
+        progresso += 2;
+        bar.style.width = progresso + "%";
+        msg.innerText = "FRITANDO...";
+        bar.style.background = "#0f0";
+
+        if(progresso >= 100) {
+            fase = "PRONTO";
+            msg.innerText = "PRONTO! PEGUE AGORA!";
+            msg.style.color = "#0f0";
+        }
+    }
+
+    if(fase === "PRONTO") {
+        progresso += 1; // Timer de queimar
+        bar.style.width = (progresso - 100) * 2 + "%"; // Reutiliza a barra para o tempo de queimar
+        bar.style.background = "#f00";
+        
+        if(dChapa < 5) { // Clicar/encostar na chapa para coletar o pronto
+             fase = "ENTREGAR";
+             msg.innerText = "LEVE AO BALCAO!";
+             bar.style.width = "100%";
+        }
+        
+        if(progresso >= 150) { // Demorou demais
+            fase = "QUEIMADO";
+            msg.innerText = "QUEIMOU! VOLTE AO BALCAO";
+            msg.style.color = "#f00";
+            progresso = 0;
+        }
+    }
+
+    if(fase === "QUEIMADO" && dBalcao < 5) {
+        fase = "PEGAR";
+        bar.style.width = "0%";
+    }
+
+    if(fase === "ENTREGAR" && dBalcao < 5) {
+        dados.grana += 50;
+        fase = "PEGAR";
+        msg.innerText = "ENTREGUE! +$50";
+        atualizarUI();
+        bar.style.width = "0%";
+    }
+
+}, 200);
