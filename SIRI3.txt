@@ -1,0 +1,271 @@
+// ============================================
+// MODO COZINHEIRO - CORREÇÃO DEFINITIVA
+// FEITO ESPECIFICAMENTE PARA SEU JOGO
+// ============================================
+
+// 1. AGUARDAR JOGO CARREGAR COMPLETAMENTE
+function aguardarJogo() {
+    if(typeof scene !== 'undefined' && scene && typeof player !== 'undefined' && player) {
+        console.log("✅ Jogo detectado! Iniciando Modo Cozinheiro...");
+        iniciarModoCozinheiro();
+    } else {
+        console.log("⏳ Aguardando jogo carregar...");
+        setTimeout(aguardarJogo, 500);
+    }
+}
+
+// 2. INICIAR QUANDO O JOGO ESTIVER PRONTO
+aguardarJogo();
+
+function iniciarModoCozinheiro() {
+    // 3. LIMPEZA DE SEGURANÇA
+    if(document.getElementById('chef-panel')) document.getElementById('chef-panel').remove();
+    
+    // 4. ACESSO DIRETO ÀS VARIÁVEIS DO JOGO
+    const jogoScene = scene; // SUA CENA ESTÁ AQUI!
+    const jogoPlayer = player; // SEU PLAYER ESTÁ AQUI!
+    
+    // 5. ESTADO DO MODO
+    const chefState = {
+        chapaPos: null,
+        balcaoPos: null,
+        chapaObj: null,
+        balcaoObj: null,
+        moedas: 0,
+        fase: "AGUARDANDO",
+        timer: null
+    };
+
+    // 6. INTERFACE MÍNIMA E FUNCIONAL
+    const panel = document.createElement('div');
+    panel.id = 'chef-panel';
+    panel.style.cssText = `
+        position: fixed;
+        left: 20px;
+        top: 200px;
+        width: 250px;
+        background: rgba(0,0,0,0.95);
+        border: 3px solid #ff00ff;
+        border-radius: 15px;
+        padding: 20px;
+        color: white;
+        font-family: Arial, sans-serif;
+        z-index: 999999;
+        box-shadow: 0 0 30px #ff00ff;
+        pointer-events: auto;
+    `;
+    
+    panel.innerHTML = `
+        <div style="text-align:center; margin-bottom:15px;">
+            <span style="color:#ff00ff; font-size:24px; font-weight:bold;">👨‍🍳 COZINHEIRO</span>
+        </div>
+        
+        <div style="background:#111; padding:15px; border-radius:10px; margin-bottom:15px;">
+            <div style="display:flex; gap:10px; margin-bottom:10px;">
+                <button id="btn-marcar-chapa" style="flex:1; padding:12px; background:#ff00ff; border:none; color:white; font-weight:bold; border-radius:8px; cursor:pointer;">
+                    🔥 CHAPA
+                </button>
+                <button id="btn-marcar-balcao" style="flex:1; padding:12px; background:#00ffff; border:none; color:black; font-weight:bold; border-radius:8px; cursor:pointer;">
+                    💰 BALCÃO
+                </button>
+            </div>
+            <div id="chef-status" style="color:#0ff; font-size:14px; text-align:center; padding:8px; background:#000; border-radius:5px;">
+                ⚡ Clique nos botões para marcar
+            </div>
+        </div>
+        
+        <div style="background:#0a0a0a; padding:15px; border-radius:10px;">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <span style="color:#fff;">💰 DINHEIRO:</span>
+                <span id="chef-dinheiro" style="color:#0f0; font-size:24px; font-weight:bold;">$0</span>
+            </div>
+            <div id="chef-mensagem" style="color:#ff0; font-size:12px; margin-top:10px; text-align:center;">
+                Marque a CHAPA e o BALCÃO para começar
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(panel);
+
+    // 7. FUNÇÃO PARA CRIAR MARCADORES HIPERVISÍVEIS
+    function criarMarcadorChef(cor, texto, posicao) {
+        const grupo = new THREE.Group();
+        
+        // CILINDRO PRINCIPAL - GIGANTE E BRILHANTE
+        const cilindro = new THREE.Mesh(
+            new THREE.CylinderGeometry(2.5, 2.5, 25, 16),
+            new THREE.MeshPhongMaterial({
+                color: cor,
+                emissive: cor,
+                emissiveIntensity: 0.8,
+                transparent: true,
+                opacity: 0.7,
+                side: THREE.DoubleSide
+            })
+        );
+        cilindro.position.y = 12.5;
+        grupo.add(cilindro);
+        
+        // ANÉIS ROTATIVOS
+        for(let i = 0; i < 3; i++) {
+            const anel = new THREE.Mesh(
+                new THREE.TorusGeometry(3.5, 0.2, 6, 30),
+                new THREE.MeshBasicMaterial({
+                    color: cor,
+                    transparent: true,
+                    opacity: 0.5,
+                    side: THREE.DoubleSide
+                })
+            );
+            anel.rotation.x = Math.PI / 2;
+            anel.rotation.z = i * 2;
+            anel.position.y = i * 6 + 5;
+            grupo.add(anel);
+        }
+        
+        // ESFERA NO TOPO
+        const esfera = new THREE.Mesh(
+            new THREE.SphereGeometry(1.5, 8, 8),
+            new THREE.MeshBasicMaterial({
+                color: cor,
+                emissive: cor,
+                emissiveIntensity: 1
+            })
+        );
+        esfera.position.y = 25;
+        grupo.add(esfera);
+        
+        // TEXTO FLUTUANTE (Sprite)
+        const canvas = document.createElement('canvas');
+        canvas.width = 512;
+        canvas.height = 128;
+        const ctx = canvas.getContext('2d');
+        ctx.shadowColor = 'black';
+        ctx.shadowBlur = 10;
+        ctx.fillStyle = cor === 0xff00ff ? '#ff00ff' : '#00ffff';
+        ctx.font = 'Bold 50px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText(texto, 256, 80);
+        
+        const texture = new THREE.CanvasTexture(canvas);
+        const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture }));
+        sprite.scale.set(12, 3, 1);
+        sprite.position.y = 32;
+        grupo.add(sprite);
+        
+        // POSICIONA
+        grupo.position.copy(posicao);
+        grupo.position.y += 2;
+        
+        // ADICIONA À CENA DO JOGO
+        jogoScene.add(grupo);
+        
+        return grupo;
+    }
+
+    // 8. EVENTOS DOS BOTÕES
+    document.getElementById('btn-marcar-chapa').onclick = () => {
+        if(!jogoPlayer) return alert("Jogador não encontrado!");
+        
+        if(chefState.chapaObj) jogoScene.remove(chefState.chapaObj);
+        
+        const pos = jogoPlayer.position.clone();
+        chefState.chapaObj = criarMarcadorChef(0xff00ff, '🔥 CHAPA', pos);
+        chefState.chapaPos = pos;
+        
+        document.getElementById('chef-status').innerHTML = '✅ CHAPA MARCADA! Agora marque o BALCÃO';
+        document.getElementById('chef-mensagem').innerHTML = '📍 Chapa salva em: ' + pos.x.toFixed(0) + ', ' + pos.z.toFixed(0);
+        
+        console.log('Chapa marcada:', pos);
+    };
+
+    document.getElementById('btn-marcar-balcao').onclick = () => {
+        if(!jogoPlayer) return alert("Jogador não encontrado!");
+        
+        if(chefState.balcaoObj) jogoScene.remove(chefState.balcaoObj);
+        
+        const pos = jogoPlayer.position.clone();
+        chefState.balcaoObj = criarMarcadorChef(0x00ffff, '💰 BALCÃO', pos);
+        chefState.balcaoPos = pos;
+        
+        document.getElementById('chef-status').innerHTML = '✅ BALCÃO MARCADO! Aproxime-se da CHAPA';
+        document.getElementById('chef-mensagem').innerHTML = '📍 Balcão salvo em: ' + pos.x.toFixed(0) + ', ' + pos.z.toFixed(0);
+        
+        console.log('Balcão marcado:', pos);
+    };
+
+    // 9. LOOP DE VERIFICAÇÃO
+    function verificarProximidade() {
+        if(!jogoPlayer || !chefState.chapaPos || !chefState.balcaoPos) return;
+        
+        const distChapa = jogoPlayer.position.distanceTo(chefState.chapaPos);
+        const distBalcao = jogoPlayer.position.distanceTo(chefState.balcaoPos);
+        const statusEl = document.getElementById('chef-status');
+        const msgEl = document.getElementById('chef-mensagem');
+        
+        // ANIMAÇÃO DOS MARCADORES
+        if(chefState.chapaObj) {
+            chefState.chapaObj.children.forEach(child => {
+                if(child.geometry && child.geometry.type === 'TorusGeometry') {
+                    child.rotation.y += 0.02;
+                    child.rotation.x += 0.01;
+                }
+            });
+        }
+        
+        if(chefState.balcaoObj) {
+            chefState.balcaoObj.children.forEach(child => {
+                if(child.geometry && child.geometry.type === 'TorusGeometry') {
+                    child.rotation.y -= 0.02;
+                    child.rotation.x -= 0.01;
+                }
+            });
+        }
+        
+        // LÓGICA DE COZINHAR
+        if(distChapa < 20 && chefState.fase === "AGUARDANDO") {
+            chefState.fase = "COZINHANDO";
+            let progresso = 0;
+            
+            if(chefState.timer) clearInterval(chefState.timer);
+            
+            chefState.timer = setInterval(() => {
+                const novaDist = jogoPlayer.position.distanceTo(chefState.chapaPos);
+                
+                if(novaDist >= 20) {
+                    clearInterval(chefState.timer);
+                    chefState.fase = "AGUARDANDO";
+                    statusEl.innerHTML = '⏸️ COZINHA INTERROMPIDA - Volte à chapa!';
+                    return;
+                }
+                
+                progresso += 10;
+                statusEl.innerHTML = `🔥 COZINHANDO: ${progresso}%`;
+                
+                if(progresso >= 100) {
+                    clearInterval(chefState.timer);
+                    chefState.fase = "PRONTO";
+                    statusEl.innerHTML = '✅ HAMBÚRGUER PRONTO! Leve ao balcão';
+                    msgEl.innerHTML = '💰 Aproxime-se do BALCÃO para entregar';
+                }
+            }, 500);
+        }
+        
+        // ENTREGA
+        if(distBalcao < 20 && chefState.fase === "PRONTO") {
+            chefState.moedas += 50;
+            document.getElementById('chef-dinheiro').innerHTML = `$${chefState.moedas}`;
+            chefState.fase = "AGUARDANDO";
+            statusEl.innerHTML = '💰 +$50! Pronto para outro pedido';
+            msgEl.innerHTML = '🔥 Aproxime-se da CHAPA para cozinhar mais';
+        }
+    }
+
+    // 10. INICIAR LOOP
+    setInterval(verificarProximidade, 100);
+    
+    console.log("✅ MODO COZINHEIRO PRONTO!");
+    
+    // 11. FEEDBACK INICIAL
+    alert("🎮 MODO COZINHEIRO ATIVO!\n\n1. Ande até onde quer a CHAPA e clique no botão ROSA\n2. Ande até onde quer o BALCÃO e clique no botão AZUL\n3. Aproxime da chapa para cozinhar!\n\nOS MARCADORES SÃO GIGANTES E BRILHANTES!");
+}
