@@ -1,0 +1,106 @@
+// 1. LIMPEZA E INTERFACE REFEITA (SEM EMOJIS)
+if(document.getElementById('ui-job')) document.getElementById('ui-job').remove();
+
+const uiJob = document.createElement('div');
+uiJob.id = 'ui-job';
+uiJob.style.cssText = "position:absolute; left:20px; bottom:180px; width:220px; background:rgba(0,20,40,0.9); border:2px solid #00ffff; border-radius:8px; padding:12px; color:white; font-family:monospace; z-index:9999; font-size:12px;";
+uiJob.innerHTML = `
+    <div style="color:#00ffff; font-weight:bold; text-align:center; border-bottom:1px solid #00ffff; margin-bottom:8px;">SIRI CASCODO - JOB</div>
+    <div id="job-money" style="color:#00ff00; font-weight:bold;">MOEDAS: $0</div>
+    <div id="job-status" style="margin:8px 0; color:#fff;">Status: Off-line</div>
+    <hr style="border:0; border-top:1px solid #333;">
+    <button id="btn-set-chapa" style="width:100%; margin-top:4px;">Config. Chapa</button>
+    <button id="btn-set-balcao" style="width:100%; margin-top:4px;">Config. Balcao</button>
+    <button id="btn-start-job" style="width:100%; margin-top:8px; background:#00ffff; color:#000; font-weight:bold; border:none; padding:5px; cursor:pointer;">BATER PONTO</button>
+`;
+document.body.appendChild(uiJob);
+
+// 2. VARIAVEIS (DINHEIRO E POSIÇÕES)
+let posChapa = null;
+let posBalcoes = []; // Agora suporta varios balcoes
+let fase = 0; 
+let carteira = 0;
+let preparoStatus = 0; // Para não ficar parado na chapa
+let balcaoAtual = null;
+
+const statusTxt = document.getElementById('job-status');
+const moneyTxt = document.getElementById('job-money');
+
+// 3. CONFIGURAÇÃO MANUAL
+document.getElementById('btn-set-chapa').onclick = () => {
+    posChapa = player.position.clone();
+    statusTxt.innerHTML = "Chapa Configurada!";
+};
+document.getElementById('btn-set-balcao').onclick = () => {
+    posBalcoes.push(player.position.clone());
+    statusTxt.innerHTML = "Balcao " + posBalcoes.length + " Salvo!";
+};
+
+// 4. LOGICA DE TRABALHO
+document.getElementById('btn-start-job').onclick = () => {
+    if(!posChapa || posBalcoes.length === 0) return alert("Configure a chapa e ao menos 1 balcao!");
+    iniciarNovoPedido();
+};
+
+function iniciarNovoPedido() {
+    fase = 1;
+    // Escolhe um balcao aleatorio dos que voce marcou
+    balcaoAtual = posBalcoes[Math.floor(Math.random() * posBalcoes.length)];
+    statusTxt.innerHTML = "VA ATE O BALCAO PEGAR O PEDIDO";
+    statusTxt.style.color = "#fff";
+}
+
+// 5. LOOP DO DIA A DIA (RODANDO A 10FPS PARA NAO PESAR NA TV)
+setInterval(() => {
+    if(fase === 0) return;
+
+    let distBalcao = player.position.distanceTo(balcaoAtual);
+    let distChapa = posChapa ? player.position.distanceTo(posChapa) : 999;
+
+    // FASE 1: Pegar Pedido no Balcao
+    if(fase === 1 && distBalcao < 4) {
+        fase = 2;
+        statusTxt.innerHTML = "PEDIDO PEGO! VÁ PARA A CHAPA";
+        statusTxt.style.color = "#ffff00";
+    }
+
+    // FASE 2: Na Chapa (Preparo Ativo)
+    if(fase === 2 && distChapa < 4) {
+        fase = 3;
+        prepararLanche();
+    }
+
+    // FASE 4: Entregar e Ganhar Moedas
+    if(fase === 4 && distBalcao < 4) {
+        carteira += 25; // Ganha 25 moedas por lanche
+        moneyTxt.innerHTML = "MOEDAS: $" + carteira;
+        statusTxt.innerHTML = "ENTREGUE! +$25";
+        statusTxt.style.color = "#00ff00";
+        fase = 0;
+        setTimeout(iniciarNovoPedido, 2000);
+    }
+}, 200);
+
+function prepararLanche() {
+    let progresso = 0;
+    statusTxt.innerHTML = "PREPARANDO: 0%";
+    
+    let tempo = setInterval(() => {
+        progresso += 10;
+        statusTxt.innerHTML = "PREPARANDO: " + progresso + "%";
+        
+        // Se o player sair de perto da chapa, para de fritar!
+        if(player.position.distanceTo(posChapa) > 5) {
+            clearInterval(tempo);
+            fase = 2;
+            statusTxt.innerHTML = "VOLTE PARA A CHAPA!";
+        }
+
+        if(progresso >= 100) {
+            clearInterval(tempo);
+            fase = 4;
+            statusTxt.innerHTML = "PRONTO! LEVE AO CLIENTE";
+            statusTxt.style.color = "#00ffff";
+        }
+    }, 400); // Demora uns 4 segundos para fritar
+}
