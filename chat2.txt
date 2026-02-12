@@ -1,0 +1,145 @@
+// Script Multiplayer TESTE com Postman Echo Server (wss://ws.postman-echo.com/raw)
+// Conecta rápido, ecoa mensagens/posições de volta (para depurar conexão).
+// Painel pequeno no canto superior direito.
+// Funciona em dispositivos fracos/TVs (WebSocket nativo).
+
+function initPublicTestMultiplayer() {
+    // Estilo pequeno para painel
+    const style = document.createElement('style');
+    style.innerHTML = `
+        #test-panel { width: 220px !important; max-height: 40vh !important; top: 185px !important; right: 20px !important; }
+        #test-chat { max-height: 140px; overflow-y: auto; font-size: 11px; color: #eee; background: #111; padding: 6px; border-radius: 6px; margin: 5px 0; }
+        .test-log { font-size: 10px; color: #0f0; }
+    `;
+    document.head.appendChild(style);
+
+    // Botão ONLINE TEST
+    var btn = document.createElement('button');
+    btn.id = 'test-btn';
+    btn.className = 'ui-btn';
+    btn.style.background = '#28a745'; // verde
+    btn.style.top = '185px';
+    btn.innerText = 'ONLINE TEST';
+    btn.onclick = () => tgl('test-panel');
+    document.body.appendChild(btn);
+
+    // Painel pequeno
+    var panel = document.createElement('div');
+    panel.id = 'test-panel';
+    panel.className = 'panel';
+    panel.style.display = 'none';
+    document.body.appendChild(panel);
+    panel.innerHTML = `
+        <p style="font-size:11px;margin:0 0 3px;">Seu Nome:</p>
+        <input type="text" id="test-name" placeholder="Jog1" style="font-size:12px;width:95%;">
+        <p style="font-size:11px;margin:8px 0 3px;">Sala (opcional):</p>
+        <input type="text" id="test-room" placeholder="sala1" style="font-size:12px;width:95%;">
+        <button class="opt" onclick="connectTest()" style="background:#28a745;font-size:12px;margin:5px 0;">CONECTAR</button>
+        <button class="opt" onclick="disconnectTest()" style="background:#ff3333;font-size:12px;">SAIR</button>
+        <div id="test-chat"></div>
+        <input type="text" id="test-msg" placeholder="Teste msg..." style="font-size:11px;width:70%;">
+        <button class="opt" onclick="sendTestMsg()" style="background:#007bff;font-size:11px;width:25%;">ENVIAR</button>
+        <div id="test-status" class="test-log"></div>
+    `;
+
+    let ws = null;
+    let playerName = '';
+    let room = '';
+    let connected = false;
+
+    window.connectTest = function() {
+        playerName = document.getElementById('test-name').value.trim() || 'Jogador' + Math.floor(Math.random()*100);
+        room = document.getElementById('test-room').value.trim() || 'default';
+        if (connected) return;
+
+        const wsUrl = 'wss://ws.postman-echo.com/raw';
+        logStatus('Tentando conectar em ' + wsUrl + '...');
+
+        ws = new WebSocket(wsUrl);
+
+        ws.onopen = function() {
+            connected = true;
+            logStatus('✅ CONECTADO! Enviando teste...');
+            addChat('Conexão OK! Envie uma msg para testar echo.');
+            // Envia join como teste
+            send({ type: 'join', name: playerName, room: room, msg: 'Entrou!' });
+        };
+
+        ws.onmessage = function(event) {
+            addChat('📥 ECHO RECEBIDO: ' + event.data);
+            logStatus('Mensagem ecoada de volta → WS funcionando!');
+            try {
+                const data = JSON.parse(event.data);
+                if (data.type === 'move' && data.name !== playerName) {
+                    // Se quiser simular outro jogador (ecoando para teste)
+                    addChat('Posição ecoada: x=' + data.x.toFixed(1));
+                }
+            } catch(e) {}
+        };
+
+        ws.onclose = function() {
+            connected = false;
+            logStatus('❌ Desconectado.');
+            addChat('Conexão fechada.');
+        };
+
+        ws.onerror = function(err) {
+            logStatus('❌ ERRO: ' + (err.message || 'Falha na conexão'));
+            addChat('Erro ao conectar. Verifique internet ou abra F12 > Console para detalhes.');
+        };
+    };
+
+    window.disconnectTest = function() {
+        if (ws) {
+            send({ type: 'leave', name: playerName });
+            ws.close();
+        }
+        connected = false;
+        addChat('Desconectado.');
+        logStatus('Pronto para reconectar.');
+    };
+
+    window.sendTestMsg = function() {
+        const msg = document.getElementById('test-msg').value.trim();
+        if (!msg || !connected) return;
+        send({ type: 'msg', name: playerName, text: msg, room: room });
+        document.getElementById('test-msg').value = '';
+    };
+
+    function send(data) {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify(data));
+            addChat('📤 Enviado: ' + JSON.stringify(data));
+        }
+    }
+
+    function addChat(msg) {
+        const div = document.getElementById('test-chat');
+        div.innerHTML += `<p style="margin:3px 0;">${msg}</p>`;
+        div.scrollTop = div.scrollHeight;
+    }
+
+    function logStatus(msg) {
+        document.getElementById('test-status').innerText = msg;
+    }
+
+    // Envia posição a cada 200ms se conectado (para teste de movimento)
+    const originalAnimate = animate;
+    window.animate = function() {
+        originalAnimate();
+        if (connected && ws && ws.readyState === WebSocket.OPEN && player) {
+            // Envia posição como teste (ecoará de volta)
+            send({
+                type: 'move',
+                name: playerName,
+                x: player.position.x,
+                y: player.position.y,
+                z: player.position.z,
+                rot: player.rotation.y
+            });
+        }
+    };
+}
+
+initPublicTestMultiplayer();
+alert('Script TESTE carregado! Clique em ONLINE TEST → CONECTAR. Abra F12 para ver logs/erros.');
