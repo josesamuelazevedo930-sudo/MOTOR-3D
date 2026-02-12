@@ -1,0 +1,115 @@
+// 1. LIMPEZA DE SEGURANÇA
+if(window.loopChef) clearInterval(window.loopChef);
+if(document.getElementById('ui-chef')) document.getElementById('ui-chef').remove();
+
+// 2. VARIÁVEIS DE ESTADO (Integradas ao seu jogo)
+let chefDados = {
+    chapaPos: null,
+    balcaoPos: null,
+    moedas: 0,
+    fase: "AGUARDANDO" // AGUARDANDO, PEGAR, COZINHAR, ENTREGAR
+};
+
+const jScene = window.scene || scene;
+
+// 3. INTERFACE ESTILO "AZUL SIRI"
+const uiChef = document.createElement('div');
+uiChef.id = 'ui-chef';
+uiChef.style.cssText = "position:absolute; left:20px; top:200px; width:200px; background:rgba(0,10,30,0.9); border:2px solid #ff00ff; border-radius:10px; padding:10px; color:white; font-family:sans-serif; z-index:1002;";
+uiChef.innerHTML = `
+    <div style="color:#ff00ff; font-weight:bold; text-align:center; margin-bottom:5px;">👨‍🍳 MODO CARREIRA</div>
+    <div id="chef-status" style="font-size:11px; color:#00ffff;">1. Vá até a chapa e marque</div>
+    <button id="set-chapa-v8" style="width:100%; margin-top:5px; background:#ff00ff; border:none; color:white; cursor:pointer; border-radius:4px;">📍 MARCAR CHAPA</button>
+    <button id="set-balcao-v8" style="width:100%; margin-top:5px; background:#00ffff; border:none; color:black; cursor:pointer; border-radius:4px;">📍 MARCAR BALCÃO</button>
+    <div id="chef-money" style="margin-top:8px; font-weight:bold; text-align:center; color:#0f0;">$ 0</div>
+`;
+document.body.appendChild(uiChef);
+
+// 4. FUNÇÃO PARA CRIAR O MARCADOR (IGUAL AO MULTIPLAYER)
+function criarMarcadorV8(cor, nome) {
+    const grupo = new THREE.Group();
+    
+    // Cria um cilindro brilhante (marcador de lugar)
+    const geo = new THREE.CylinderGeometry(2, 2, 20, 16);
+    const mat = new THREE.MeshBasicMaterial({ color: cor, transparent: true, opacity: 0.4, wireframe: true });
+    const malha = new THREE.Mesh(geo, mat);
+    grupo.add(malha);
+
+    // Texto flutuante sobre o marcador
+    const canvas = document.createElement('canvas');
+    canvas.width = 256; canvas.height = 64;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = cor === 0xff00ff ? '#ff00ff' : '#00ffff';
+    ctx.font = 'bold 30px Arial'; ctx.textAlign = 'center';
+    ctx.fillText(nome, 128, 45);
+    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(canvas) }));
+    sprite.scale.set(8, 2, 1); sprite.position.y = 12;
+    grupo.add(sprite);
+
+    jScene.add(grupo);
+    return grupo;
+}
+
+// 5. EVENTOS DE CLIQUE
+document.getElementById('set-chapa-v8').onclick = () => {
+    const p = window.player || player;
+    if(chefDados.chapaPos) jScene.remove(chefDados.chapaPos);
+    chefDados.chapaPos = criarMarcadorV8(0xff00ff, "COZINHA");
+    chefDados.chapaPos.position.copy(p.position);
+    document.getElementById('chef-status').innerText = "Chapa Salva!";
+};
+
+document.getElementById('set-balcao-v8').onclick = () => {
+    const p = window.player || player;
+    if(chefDados.balcaoPos) jScene.remove(chefDados.balcaoPos);
+    chefDados.balcaoPos = criarMarcadorV8(0x00ffff, "BALCÃO");
+    chefDados.balcaoPos.position.copy(p.position);
+    document.getElementById('chef-status').innerText = "Balcão Salvo!";
+    if(chefDados.chapaPos) chefDados.fase = "PEGAR";
+};
+
+// 6. LOOP DE GAMEPLAY (Lógica de entrega e tempo)
+window.loopChef = setInterval(() => {
+    const p = window.player || player;
+    if(!p || chefDados.fase === "AGUARDANDO") return;
+
+    const dChapa = p.position.distanceTo(chefDados.chapaPos.position);
+    const dBalcao = p.position.distanceTo(chefDados.balcaoPos.position);
+    const statusLabel = document.getElementById('chef-status');
+
+    if(chefDados.fase === "PEGAR" && dBalcao < 5) {
+        chefDados.fase = "COZINHAR";
+        statusLabel.innerText = "PEDIDO PEGO! VÁ COZINHAR";
+        statusLabel.style.color = "#ff00ff";
+    }
+
+    if(chefDados.fase === "COZINHAR" && dChapa < 5) {
+        chefDados.fase = "PROCESSANDO";
+        let tempo = 0;
+        let timerCozinha = setInterval(() => {
+            tempo += 20;
+            statusLabel.innerText = "FRITANDO: " + tempo + "%";
+            
+            if(tempo >= 100) {
+                clearInterval(timerCozinha);
+                chefDados.fase = "ENTREGAR";
+                statusLabel.innerText = "PRONTO! LEVE AO BALCÃO";
+                statusLabel.style.color = "#00ff00";
+            }
+            // Se fugir da chapa, queima ou reseta
+            if(p.position.distanceTo(chefDados.chapaPos.position) > 8) {
+                clearInterval(timerCozinha);
+                chefDados.fase = "COZINHAR";
+                statusLabel.innerText = "VOCÊ SAIU DA CHAPA!";
+            }
+        }, 800);
+    }
+
+    if(chefDados.fase === "ENTREGAR" && dBalcao < 5) {
+        chefDados.moedas += 50;
+        document.getElementById('chef-money').innerText = "$ " + chefDados.moedas;
+        chefDados.fase = "PEGAR";
+        statusLabel.innerText = "ENTREGUE! +$50";
+        statusLabel.style.color = "#00ffff";
+    }
+}, 500);
