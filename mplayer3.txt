@@ -1,0 +1,219 @@
+if(document.getElementById('ui-multi')) document.getElementById('ui-multi').remove();
+
+const mqttScript = document.createElement('script');
+mqttScript.src = 'https://cdn.jsdelivr.net/npm/mqtt@4.1.0/dist/mqtt.min.js';
+document.head.appendChild(mqttScript);
+
+mqttScript.onload = () => { setupMultiplayerV8(); };
+
+function setupMultiplayerV8() {
+    // BOTÃO M-PLAYER
+    const btnMenu = document.createElement('button');
+    btnMenu.innerHTML = "M-PLAYER";
+    btnMenu.style.cssText = "position:absolute; right:20px; top:240px; width:110px; padding:12px; color:white; border:none; font-weight:bold; border-radius:8px; z-index:1001; background:#ff00ff; box-shadow:0 4px #000; cursor:pointer;";
+    btnMenu.onclick = () => {
+        const p = document.getElementById('ui-multi');
+        p.style.display = p.style.display === 'none' ? 'block' : 'none';
+    };
+    document.body.appendChild(btnMenu);
+
+    // PAINEL AZUL SUPERIOR ESQUERDO
+    const ui = document.createElement('div');
+    ui.id = 'ui-multi';
+    ui.style.cssText = "position:absolute; left:20px; top:20px; width:260px; background:rgba(0,10,30,0.95); border-radius:12px; padding:15px; color:#00ffff; border:2px solid #00ffff; z-index:1000; display:none; font-family:sans-serif; box-shadow: 0 0 15px rgba(0,255,255,0.4);";
+    ui.innerHTML = `
+        <div style="font-weight:bold; text-align:center; margin-bottom:10px; text-shadow: 0 0 5px #00ffff;">🌐 SIRI MULTI V8 - LIVE</div>
+        <div id="setup-mp">
+            <input id="mp-name" placeholder="Nome" style="width:90%; padding:8px; margin-bottom:5px; background:#001a33; color:#fff; border:1px solid #00ffff; border-radius:4px;">
+            <input id="mp-room" placeholder="Sala" value="1" style="width:90%; padding:8px; margin-bottom:10px; background:#001a33; color:#fff; border:1px solid #00ffff; border-radius:4px;">
+            <button id="btn-con" style="width:100%; padding:10px; background:#00ffff; color:#000; font-weight:bold; border:none; border-radius:6px; cursor:pointer;">🎮 CONECTAR</button>
+        </div>
+        <div id="mp-active" style="display:none;">
+            <div id="chat-logs" style="height:100px; overflow-y:auto; font-size:11px; background:rgba(0,0,0,0.5); color:#00ffff; padding:8px; border:1px solid #005577; border-radius:4px;"></div>
+            <div style="display:flex; margin-top:10px; gap:5px;">
+                <input id="chat-in" placeholder="Diga algo..." style="flex:1; background:#001a33; color:#fff; border:1px solid #005577; padding:8px; border-radius:4px;">
+                <button id="btn-send" style="padding:5px 12px; background:#00ffff; color:#000; font-weight:bold; border:none; border-radius:4px;">OK</button>
+            </div>
+            <div id="st-count" style="font-size:10px; color:#00ffff; margin-top:8px; text-align:center; opacity:0.8;">👥 JOGADORES NA SALA: 0</div>
+        </div>
+    `;
+    document.body.appendChild(ui);
+
+    let client, sala, meuNome, remotePlayers = {};
+    const jScene = window.scene || scene;
+    const loader = window.loaderGLTF || new THREE.GLTFLoader();
+
+    // GERENCIADOR DE ANIMAÇÃO PARA OS OUTROS JOGADORES
+    function setRemoteAnim(pObj, animName) {
+        if (!pObj.mixer || !pObj.actions) return;
+        const targetAction = pObj.actions[animName];
+        if (targetAction && !targetAction.isRunning()) {
+            Object.values(pObj.actions).forEach(a => a.fadeOut(0.2));
+            targetAction.reset().fadeIn(0.2).play();
+        }
+    }
+
+    function atualizarSkinRemota(grupo, skinUrl) {
+        if (grupo.currentSkin === skinUrl) return;
+        grupo.currentSkin = skinUrl;
+
+        // Limpa modelos antigos sem apagar Nicks/Chat
+        grupo.traverse((child) => {
+            if (child.type === 'Group' || child.type === 'Scene' || child.isMesh) {
+                if (child !== grupo && !child.isSprite) grupo.remove(child);
+            }
+        });
+
+        const urlToLoad = skinUrl || 'https://threejs.org/examples/models/gltf/Soldier.glb';
+        loader.load(urlToLoad, (gltf) => {
+            const model = gltf.scene;
+            model.scale.set(5, 5, 5);
+            grupo.add(model);
+
+            // Prepara o Mixer de animação para o modelo novo
+            const mixer = new THREE.AnimationMixer(model);
+            const actions = {};
+            gltf.animations.forEach(clip => {
+                actions[clip.name.toLowerCase()] = mixer.clipAction(clip);
+            });
+            
+            // Padrão Three.js: Soldier usa 'Idle', 'Walk', 'Run'
+            grupo.mixer = mixer;
+            grupo.actions = actions;
+            if (actions['idle']) actions['idle'].play();
+        });
+    }
+
+    function criarAvatarRemoto(id, skinInicial) {
+        const grupo = new THREE.Group();
+        grupo.targetPos = new THREE.Vector3();
+        grupo.targetRot = 0;
+
+        // NICK (Rosa)
+        const canvasN = document.createElement('canvas');
+        canvasN.width = 256; canvasN.height = 64;
+        const ctxN = canvasN.getContext('2d');
+        ctxN.fillStyle = '#ff00ff'; ctxN.font = 'bold 30px Arial'; ctxN.textAlign = 'center';
+        ctxN.fillText(id, 128, 45);
+        const labelN = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(canvasN) }));
+        labelN.scale.set(6, 1.5, 1); labelN.position.y = 10;
+        grupo.add(labelN);
+
+        atualizarSkinRemota(grupo, skinInicial);
+        jScene.add(grupo);
+        return grupo;
+    }
+
+    document.getElementById('btn-con').onclick = () => {
+        meuNome = document.getElementById('mp-name').value || "User" + Math.floor(Math.random()*99);
+        sala = document.getElementById('mp-room').value || "1";
+        document.getElementById('setup-mp').style.display = 'none';
+        document.getElementById('mp-active').style.display = 'block';
+
+        client = mqtt.connect('wss://broker.emqx.io:8084/mqtt', { clientId: 'siri_' + Math.random().toString(36).substr(2, 5) });
+
+        client.on('connect', () => {
+            client.subscribe('siri/multi/' + sala);
+            addLog("SISTEMA", "Rede Azul Conectada!");
+        });
+
+        client.on('message', (topic, msg) => {
+            try {
+                const data = JSON.parse(msg.toString());
+                if (data.id === meuNome) return;
+
+                if (data.type === 'sync') {
+                    if (!remotePlayers[data.id]) {
+                        remotePlayers[data.id] = criarAvatarRemoto(data.id, data.skin);
+                        updateCounter();
+                    }
+                    const p = remotePlayers[data.id];
+                    // Em vez de setar a posição direto, guardamos para o LERP
+                    p.targetPos.set(data.x, data.y, data.z);
+                    p.targetRot = data.ry;
+                    p.lastSeen = Date.now();
+                    
+                    if (data.skin && p.currentSkin !== data.skin) atualizarSkinRemota(p, data.skin);
+                    if (data.anim) setRemoteAnim(p, data.anim);
+                }
+                
+                if (data.type === 'chat') {
+                    addLog(data.id, data.text);
+                    if (remotePlayers[data.id]) mostrarMensagemRoblox(remotePlayers[data.id], data.text);
+                }
+            } catch(e){}
+        });
+    };
+
+    const clock = new THREE.Clock();
+    setInterval(() => {
+        const pLocal = window.player || player;
+        const delta = clock.getDelta();
+
+        // 1. Enviar meus dados
+        if (client && client.connected && pLocal) {
+            // Detecta minha animação atual
+            let minhaAnim = "idle";
+            if (typeof activeAction !== 'undefined' && activeAction) minhaAnim = activeAction._clip.name.toLowerCase();
+
+            client.publish('siri/multi/' + sala, JSON.stringify({
+                type: 'sync', id: meuNome,
+                x: pLocal.position.x, y: pLocal.position.y, z: pLocal.position.z,
+                ry: pLocal.rotation.y,
+                skin: window.currentSkinUrl || "",
+                anim: minhaAnim
+            }));
+        }
+
+        // 2. Atualizar jogadores remotos (LERP e MIXER)
+        for(let id in remotePlayers) {
+            const p = remotePlayers[id];
+            
+            // Suaviza movimento (LERP)
+            p.position.lerp(p.targetPos, 0.2);
+            p.rotation.y += (p.targetRot - p.rotation.y) * 0.2;
+
+            // Atualiza animação 3D
+            if (p.mixer) p.mixer.update(0.016);
+
+            // Timeout
+            if(Date.now() - p.lastSeen > 5000) {
+                jScene.remove(p);
+                delete remotePlayers[id];
+                updateCounter();
+            }
+        }
+    }, 100);
+
+    function mostrarMensagemRoblox(pObj, texto) {
+        if (pObj.msgSprite) pObj.remove(pObj.msgSprite);
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = 512; canvas.height = 64;
+        ctx.fillStyle = 'white'; ctx.font = 'bold 40px Arial'; ctx.textAlign = 'center';
+        ctx.fillText(texto, 256, 45);
+        const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(canvas) }));
+        sprite.scale.set(10, 1.25, 1); sprite.position.y = 13;
+        pObj.add(sprite);
+        pObj.msgSprite = sprite;
+        setTimeout(() => { if(pObj.msgSprite === sprite) pObj.remove(sprite); }, 5000);
+    }
+
+    function addLog(n, t) {
+        const logs = document.getElementById('chat-logs');
+        logs.innerHTML += `<div><b style="color:#00ffff">${n}:</b> <span style="color:#fff">${t}</span></div>`;
+        logs.scrollTop = logs.scrollHeight;
+    }
+
+    function updateCounter() {
+        document.getElementById('st-count').innerText = "👥 JOGADORES: " + Object.keys(remotePlayers).length;
+    }
+
+    document.getElementById('btn-send').onclick = () => {
+        const i = document.getElementById('chat-in');
+        if(i.value && client) {
+            client.publish('siri/multi/' + sala, JSON.stringify({ type: 'chat', id: meuNome, text: i.value }));
+            addLog("Eu", i.value); i.value = "";
+        }
+    };
+}
