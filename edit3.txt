@@ -1,0 +1,89 @@
+(function() {
+    if (document.getElementById('skin-gui')) document.getElementById('skin-gui').remove();
+
+    const gui = document.createElement('div');
+    gui.id = 'skin-gui';
+    gui.style.cssText = `
+        position: absolute; left: 10px; top: 50%; transform: translateY(-50%);
+        width: 190px; background: rgba(0, 0, 0, 0.95); border: 2px solid #00ffff;
+        border-radius: 12px; padding: 15px; color: white; font-family: sans-serif;
+        z-index: 10006; display: none; box-shadow: 0 0 20px #00ffff;
+    `;
+
+    const toggleBtn = document.createElement('button');
+    toggleBtn.innerHTML = "🎨 MOD";
+    toggleBtn.style.cssText = "position:absolute; left:10px; top:240px; width:70px; height:45px; background:#00ffff; color:black; border:none; border-radius:10px; font-weight:bold; cursor:pointer; z-index:10007; box-shadow: 0 4px #000;";
+    toggleBtn.onclick = () => {
+        gui.style.display = gui.style.display === 'none' ? 'block' : 'none';
+    };
+    document.body.appendChild(toggleBtn);
+
+    gui.innerHTML = `
+        <div style="text-align:center; font-weight:bold; color:#00ffff; margin-bottom:10px; border-bottom:1px solid #333;">REPARAR MODELO</div>
+        
+        <label style="font-size:10px;">TAMANHO: <b id="val-size">1.0</b></label>
+        <input type="range" min="1" max="800" value="10" style="width:100%;" id="range-size">
+        
+        <div style="background:#222; padding:5px; border-radius:5px; margin-top:10px;">
+            <div style="font-size:9px; color:#ff00ff; text-align:center; margin-bottom:5px;">CENTRALIZAR EIXO (GIRO)</div>
+            <label style="font-size:9px;">LADO (X): <b id="val-x">0</b></label>
+            <input type="range" min="-100" max="100" value="0" style="width:100%;" id="range-x">
+            
+            <label style="font-size:9px;">FRENTE (Z): <b id="val-z">0</b></label>
+            <input type="range" min="-100" max="100" value="0" style="width:100%;" id="range-z">
+            
+            <label style="font-size:9px;">ALTURA (Y): <b id="val-y">0</b></label>
+            <input type="range" min="-100" max="100" value="0" style="width:100%;" id="range-y">
+        </div>
+
+        <div style="font-size:10px; margin:10px 0 5px;">CORES:</div>
+        <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:3px;">
+            <button onclick="window.setSkinColor('#ffffff')" style="background:#fff; height:20px; border:none;"></button>
+            <button onclick="window.setSkinColor('#ff00ff')" style="background:#ff00ff; height:20px; border:none;"></button>
+            <button onclick="window.setSkinColor('#00ffff')" style="background:#00ffff; height:20px; border:none;"></button>
+        </div>
+
+        <button id="reset-skin" style="width:100%; background:#ff3333; color:white; border:none; padding:8px; border-radius:6px; font-weight:bold; margin-top:10px;">RESETAR</button>
+    `;
+    document.body.appendChild(gui);
+
+    let currentColor = "#ffffff";
+    window.setSkinColor = (c) => { currentColor = c; aplicarMudanças(); };
+
+    function aplicarMudanças() {
+        if (!player || !player.children[0]) return;
+
+        const s = document.getElementById('range-size').value / 10;
+        const x = document.getElementById('range-x').value / 5;
+        const y = document.getElementById('range-y').value / 5;
+        const z = document.getElementById('range-z').value / 5;
+
+        document.getElementById('val-size').innerText = s.toFixed(1);
+        document.getElementById('val-x').innerText = x.toFixed(1);
+        document.getElementById('val-y').innerText = y.toFixed(1);
+        document.getElementById('val-z').innerText = z.toFixed(1);
+
+        player.scale.set(s, s, s);
+
+        // O segredo: Movemos apenas o filho (a skin) para compensar o erro do modelo
+        const skin = player.children[0];
+        skin.position.set(x, y, z);
+
+        player.traverse((child) => {
+            if (child.isMesh) {
+                child.material.color.set(currentColor);
+            }
+        });
+    }
+
+    document.getElementById('range-size').oninput = aplicarMudanças;
+    document.getElementById('range-x').oninput = aplicarMudanças;
+    document.getElementById('range-y').oninput = aplicarMudanças;
+    document.getElementById('range-z').oninput = aplicarMudanças;
+
+    document.getElementById('reset-skin').onclick = () => {
+        document.querySelectorAll('input[type=range]').forEach(i => i.value = i.id === 'range-size' ? 10 : 0);
+        currentColor = "#ffffff";
+        aplicarMudanças();
+    };
+})();
