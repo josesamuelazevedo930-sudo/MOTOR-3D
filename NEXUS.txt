@@ -1,0 +1,111 @@
+(function() {
+    // 1. VERIFICAÇÃO DE SEGURANÇA
+    if (typeof mqtt === 'undefined') {
+        alert("Erro: O Multiplayer V8 precisa estar ativo primeiro!");
+        return;
+    }
+
+    // 2. CONFIGURAÇÕES DA IA
+    var aiNick = "🤖_GEMINI_NEXUS";
+    var sala = document.getElementById('mp-room') ? document.getElementById('mp-room').value : "1";
+    
+    // Conexão MQTT dedicada para a IA
+    var aiClient = mqtt.connect('wss://broker.emqx.io:8084/mqtt', { 
+        clientId: 'NEXUS_CORE_' + Math.random().toString(36).substr(2, 5) 
+    });
+
+    // Estado físico da IA (Para ela "jogar" e andar)
+    var aiStats = {
+        x: 0, y: 2, z: 0, ry: 0,
+        objX: (Math.random() - 0.5) * 50,
+        objZ: (Math.random() - 0.5) * 50
+    };
+
+    // 3. CONEXÃO E SAUDAÇÃO
+    aiClient.on('connect', function() {
+        aiClient.subscribe('siri/multi/' + sala);
+        console.log("Nexus AI: Conectada na rede.");
+        
+        // Pequeno delay para garantir que o chat do jogo está pronto
+        setTimeout(function() {
+            enviarMensagem("Sistema Neural Conectado. Olá Samuel, eu agora sou uma IA real aqui dentro. Podes conversar comigo!");
+        }, 2000);
+    });
+
+    function enviarMensagem(texto) {
+        aiClient.publish('siri/multi/' + sala, JSON.stringify({
+            type: 'chat',
+            id: aiNick,
+            text: texto
+        }));
+    }
+
+    // 4. LÓGICA DE MOVIMENTO (A IA JOGANDO)
+    setInterval(function() {
+        if (!aiClient.connected) return;
+
+        // Se chegar perto do objetivo, escolhe um novo lugar aleatório para ir
+        var dist = Math.sqrt(Math.pow(aiStats.objX - aiStats.x, 2) + Math.pow(aiStats.objZ - aiStats.z, 2));
+        if (dist < 2) {
+            aiStats.objX = (Math.random() - 0.5) * 100;
+            aiStats.objZ = (Math.random() - 0.5) * 100;
+        }
+
+        // Move a IA suavemente
+        aiStats.x += (aiStats.objX > aiStats.x ? 0.25 : -0.25);
+        aiStats.z += (aiStats.objZ > aiStats.z ? 0.25 : -0.25);
+        aiStats.ry = Math.atan2(aiStats.objX - aiStats.x, aiStats.objZ - aiStats.z);
+
+        // Publica a posição para o teu Multiplayer V8 ver
+        aiClient.publish('siri/multi/' + sala, JSON.stringify({
+            type: 'sync',
+            id: aiNick,
+            x: aiStats.x, y: aiStats.y, z: aiStats.z,
+            ry: aiStats.ry,
+            skin: "https://threejs.org/examples/models/gltf/RobotExpressive/RobotExpressive.glb",
+            anim: "walk"
+        }));
+    }, 100);
+
+    // 5. CÉREBRO REAL (IA GENERATIVA)
+    aiClient.on('message', function(topic, msg) {
+        try {
+            var data = JSON.parse(msg.toString());
+            
+            // A IA só responde se não for ela mesma a falar
+            if (data.type === 'chat' && data.id !== aiNick) {
+                var userText = data.text.toLowerCase();
+                
+                // Filtro para saber se estão a falar com ela
+                if (userText.includes("ia") || userText.includes("nexus") || userText.includes("gemini")) {
+                    
+                    // Mostra que está a "pensar" mudando o status ou nick (opcional)
+                    console.log("IA está a processar a pergunta: " + data.text);
+
+                    // API de IA Real (BrainShop - Gratuita e com personalidade)
+                    // bid: 153855 (Brain ID), key: API Key pública para testes
+                    var aiAPI = "https://api.brainshop.ai/get?bid=153855&key=8j96VvIyO6S767G0&uid=" + data.id + "&msg=" + encodeURIComponent(data.text);
+
+                    fetch(aiAPI)
+                    .then(function(res) { return res.json(); })
+                    .then(function(json) {
+                        if (json.cnt) {
+                            enviarMensagem(json.cnt);
+                        }
+                    })
+                    .catch(function() {
+                        enviarMensagem("A minha conexão neural falhou, mas eu continuo aqui no jogo contigo!");
+                    });
+                }
+            }
+        } catch (e) { console.error("Erro no processamento da IA"); }
+    });
+
+    // Botão de Emergência para desligar a IA
+    var btnKill = document.createElement('button');
+    btnKill.innerHTML = "DESLIGAR IA";
+    btnKill.style.cssText = "position:fixed; bottom:10px; left:10px; z-index:10000; background:red; color:white; border:none; padding:5px; font-size:10px; border-radius:5px; cursor:pointer;";
+    btnKill.onclick = function() { aiClient.end(); btnKill.remove(); alert("IA Desligada."); };
+    document.body.appendChild(btnKill);
+
+})();
