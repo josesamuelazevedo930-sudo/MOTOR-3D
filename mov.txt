@@ -1,0 +1,85 @@
+(function() {
+    if (document.getElementById('calib-gui')) document.getElementById('calib-gui').remove();
+
+    const gui = document.createElement('div');
+    gui.id = 'calib-gui';
+    gui.style.cssText = `
+        position: absolute; left: 10px; top: 50%; transform: translateY(-50%);
+        width: 200px; background: rgba(0, 0, 0, 0.95); border: 2px solid #00ff00;
+        border-radius: 12px; padding: 15px; color: white; font-family: sans-serif;
+        z-index: 10006; display: none; box-shadow: 0 0 20px #00ff00;
+    `;
+
+    const toggleBtn = document.createElement('button');
+    toggleBtn.innerHTML = "⚙️ CALIBRAR";
+    toggleBtn.style.cssText = "position:absolute; left:10px; top:240px; width:80px; height:45px; background:#00ff00; color:black; border:none; border-radius:10px; font-weight:bold; cursor:pointer; z-index:10007;";
+    toggleBtn.onclick = () => gui.style.display = gui.style.display === 'none' ? 'block' : 'none';
+    document.body.appendChild(toggleBtn);
+
+    let etapa = 0;
+    let rotacoesSalvas = { frente: 0, tras: 0, esquerda: 0, direita: 0 };
+
+    const instrucoes = [
+        "1. Gire o modelo para a FRENTE",
+        "2. Gire o modelo para TRÁS",
+        "3. Gire o modelo para ESQUERDA",
+        "4. Gire o modelo para DIREITA",
+        "CONCLUÍDO!"
+    ];
+
+    gui.innerHTML = `
+        <div id="instrucao" style="text-align:center; font-weight:bold; color:#00ff00; margin-bottom:10px;">${instrucoes[0]}</div>
+        
+        <input type="range" min="0" max="360" value="0" style="width:100%;" id="range-rot">
+        <div style="text-align:center; font-size:10px; margin-bottom:10px;">Ângulo: <b id="val-rot">0</b>°</div>
+
+        <button id="btn-proximo" style="width:100%; background:#00ff00; color:black; border:none; padding:10px; border-radius:6px; font-weight:bold;">SALVAR ETAPA</button>
+        
+        <div id="status" style="font-size:9px; color:#aaa; margin-top:10px; text-align:center;">Ajuste a rotação e clique em salvar.</div>
+    `;
+    document.body.appendChild(gui);
+
+    const rangeRot = document.getElementById('range-rot');
+    const valRot = document.getElementById('val-rot');
+    const btnProximo = document.getElementById('btn-proximo');
+    const textoInstrucao = document.getElementById('instrucao');
+
+    // Atualiza a rotação visual em tempo real
+    rangeRot.oninput = () => {
+        if (!player || !player.children[0]) return;
+        const rad = (rangeRot.value * Math.PI) / 180;
+        player.children[0].rotation.y = rad;
+        valRot.innerText = rangeRot.value;
+    };
+
+    btnProximo.onclick = () => {
+        const anguloAtual = (rangeRot.value * Math.PI) / 180;
+        
+        if (etapa === 0) rotacoesSalvas.frente = anguloAtual;
+        else if (etapa === 1) rotacoesSalvas.tras = anguloAtual;
+        else if (etapa === 2) rotacoesSalvas.esquerda = anguloAtual;
+        else if (etapa === 3) rotacoesSalvas.direita = anguloAtual;
+
+        etapa++;
+        if (etapa < 4) {
+            textoInstrucao.innerText = instrucoes[etapa];
+            rangeRot.value = 0;
+            valRot.innerText = "0";
+        } else {
+            textoInstrucao.innerText = "SISTEMA PRONTO!";
+            btnProximo.style.display = "none";
+            rangeRot.style.display = "none";
+            aplicarLogicaFinal();
+        }
+    };
+
+    function aplicarLogicaFinal() {
+        // Aqui o script "sequestra" a função de andar do motor
+        // e usa os ângulos que você salvou.
+        window.obterAnguloSkin = (direcao) => {
+            return rotacoesSalvas[direcao] || 0;
+        };
+        alert("Configuração salva! Agora a skin usará seus ajustes para andar.");
+    }
+
+})();
