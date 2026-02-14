@@ -1,0 +1,61 @@
+(function() {
+    if (document.getElementById('pivot-gui')) document.getElementById('pivot-gui').remove();
+
+    const gui = document.createElement('div');
+    gui.id = 'pivot-gui';
+    gui.style.cssText = `
+        position: absolute; left: 10px; top: 50%; transform: translateY(-50%);
+        width: 220px; background: rgba(10, 10, 10, 0.98); border: 2px solid #ff0000;
+        border-radius: 12px; padding: 15px; color: white; font-family: monospace;
+        z-index: 10006; box-shadow: 0 0 20px #ff0000;
+    `;
+
+    gui.innerHTML = `
+        <div style="text-align:center; font-weight:bold; color:#ff0000; margin-bottom:10px;">CORRETOR DE PIVÔ</div>
+        <div style="font-size:9px; color:#aaa; margin-bottom:10px; text-align:center;">Puxe o boneco para o centro invisível</div>
+        
+        <label style="font-size:11px;">ESQUERDA / DIREITA (X): <b id="vx">0</b></label>
+        <input type="range" min="-200" max="200" value="0" style="width:100%; margin-bottom:10px;" id="rx">
+        
+        <label style="font-size:11px;">FRENTE / TRÁS (Z): <b id="vz">0</b></label>
+        <input type="range" min="-200" max="200" value="0" style="width:100%; margin-bottom:10px;" id="rz">
+        
+        <label style="font-size:11px;">ALTURA (Y): <b id="vy">0</b></label>
+        <input type="range" min="-200" max="200" value="0" style="width:100%; margin-bottom:10px;" id="ry">
+
+        <button id="btn-fix" style="width:100%; background:#ff0000; color:white; border:none; padding:10px; border-radius:6px; font-weight:bold; cursor:pointer;">FIXAR MODELO</button>
+        <div style="font-size:8px; margin-top:10px; color:#ff0000; text-align:center;">Gire o boneco enquanto ajusta!</div>
+    `;
+    document.body.appendChild(gui);
+
+    const rx = document.getElementById('rx');
+    const ry = document.getElementById('ry');
+    const rz = document.getElementById('rz');
+
+    function ajustar() {
+        if (!player || !player.children[0]) return;
+        
+        // Convertemos o valor do slider para unidades do jogo
+        const x = rx.value / 5;
+        const y = ry.value / 5;
+        const z = rz.value / 5;
+
+        document.getElementById('vx').innerText = x.toFixed(1);
+        document.getElementById('vy').innerText = y.toFixed(1);
+        document.getElementById('vz').innerText = z.toFixed(1);
+
+        // O segredo: Movemos a SKIN (filho) para compensar o erro do arquivo
+        const skin = player.children[0];
+        skin.position.set(x, y, z);
+    }
+
+    rx.oninput = ajustar;
+    ry.oninput = ajustar;
+    rz.oninput = ajustar;
+
+    document.getElementById('btn-fix').onclick = () => {
+        alert("Modelo centralizado no eixo real!");
+        gui.style.display = 'none';
+    };
+
+})();
