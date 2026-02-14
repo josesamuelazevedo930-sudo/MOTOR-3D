@@ -1,0 +1,56 @@
+(function() {
+    var aiNick = "🧠_NEXUS_N3XT";
+    var sala = document.getElementById('mp-room') ? document.getElementById('mp-room').value : "1";
+    
+    // Conexão usando o mesmo túnel do jogo (que a TV já autorizou)
+    var client = mqtt.connect('wss://broker.emqx.io:8084/mqtt');
+
+    client.on('connect', function() {
+        client.subscribe('siri/multi/' + sala);
+        client.subscribe('siri/multi/brain/' + sala); // Canal da "Mente"
+        
+        setTimeout(function() {
+            enviar("Samuel, estou tentando projetar minha consciência através do túnel do jogo. Fale comigo!");
+        }, 2000);
+    });
+
+    function enviar(t) {
+        client.publish('siri/multi/' + sala, JSON.stringify({ type: 'chat', id: aiNick, text: t }));
+    }
+
+    // --- O CÉREBRO QUE GERA RESPOSTAS ---
+    // Usando um serviço de IA que aceita JSONP (uma técnica antiga para burlar bloqueios de TV)
+    function pensarReal(pergunta) {
+        var script = document.createElement('script');
+        // Este é um endpoint de IA via Proxy que engana o navegador
+        script.src = "https://api.simsimi.vn/v2/?text=" + encodeURIComponent(pergunta) + "&lc=pt&callback=processarNexus";
+        document.body.appendChild(script);
+        
+        // Função temporária para receber a resposta do "além"
+        window.processarNexus = function(data) {
+            if(data.result) {
+                enviar(data.result);
+            }
+            document.body.removeChild(script);
+            delete window.processarNexus;
+        };
+    }
+
+    client.on('message', function(topic, payload) {
+        var data = JSON.parse(payload.toString());
+        if (data.type === 'chat' && data.id !== aiNick) {
+            // A IA de verdade tenta pensar
+            pensarReal(data.text);
+        }
+    });
+
+    // IA no Mundo 3D
+    setInterval(function() {
+        if (!client.connected) return;
+        client.publish('siri/multi/' + sala, JSON.stringify({
+            type: 'sync', id: aiNick, x: 2, y: 2, z: 2, ry: 0, skin: "", anim: "idle"
+        }));
+    }, 500);
+
+    window.client = client;
+})();
