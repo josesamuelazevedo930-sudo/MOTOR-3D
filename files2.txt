@@ -1,0 +1,64 @@
+(function() {
+    if (document.getElementById('injector-gui')) document.getElementById('injector-gui').remove();
+
+    // Janela do Injetor
+    const gui = document.createElement('div');
+    gui.id = 'injector-gui';
+    gui.style.cssText = `
+        position: absolute; right: 10px; top: 100px;
+        width: 180px; background: rgba(0, 0, 0, 0.9); border: 2px solid #fbff00;
+        border-radius: 8px; padding: 12px; color: white; font-family: monospace;
+        z-index: 10015; box-shadow: 0 0 15px rgba(251, 255, 0, 0.5);
+    `;
+
+    gui.innerHTML = `
+        <div style="text-align:center; font-weight:bold; color:#fbff00; margin-bottom:10px; font-size:12px;">USB INJECTOR v2</div>
+        
+        <button id="btn-load-usb" style="width:100%; background:#fbff00; color:black; border:none; padding:10px; font-weight:bold; cursor:pointer; border-radius:4px;">INJETAR .GLB</button>
+        
+        <div id="file-name" style="font-size:9px; margin-top:8px; color:#0f0; text-align:center; overflow:hidden; white-space:nowrap; text-overflow:ellipsis;">Aguardando USB...</div>
+        
+        <input type="file" id="usb-input" style="display:none;" accept=".glb">
+    `;
+    document.body.appendChild(gui);
+
+    const input = document.getElementById('usb-input');
+    const nameDisplay = document.getElementById('file-name');
+    const btn = document.getElementById('btn-load-usb');
+
+    btn.onclick = () => input.click();
+
+    input.onchange = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        nameDisplay.innerText = "Lendo: " + file.name;
+
+        // O PULO DO GATO: Cria um URL que a TV não bloqueia
+        const blobURL = URL.createObjectURL(file);
+
+        // Verifica se o Loader do seu jogo existe
+        const loader = window.gltfLoader || (window.THREE && new THREE.GLTFLoader());
+
+        if (loader) {
+            loader.load(blobURL, (gltf) => {
+                if (player) {
+                    // Remove a skin velha
+                    player.remove(player.children[0]);
+                    // Adiciona a skin nova do pendrive
+                    player.add(gltf.scene);
+                    
+                    nameDisplay.innerText = "✅ INJETADO!";
+                    setTimeout(() => { nameDisplay.innerText = file.name; }, 2000);
+                }
+            }, 
+            undefined, 
+            (error) => {
+                nameDisplay.innerText = "❌ ERRO NO MODELO";
+                console.error(error);
+            });
+        } else {
+            nameDisplay.innerText = "❌ LOADER NÃO ACHADO";
+        }
+    };
+})();
