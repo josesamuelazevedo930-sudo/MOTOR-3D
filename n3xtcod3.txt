@@ -1,0 +1,67 @@
+(function() {
+    if (typeof mqtt === 'undefined') return;
+
+    const aiNick = "🧠_NEXUS_N3XT";
+    const sala = document.getElementById('mp-room') ? document.getElementById('mp-room').value : "1";
+    const client = mqtt.connect('wss://broker.emqx.io:8084/mqtt', { clientId: 'NEURAL_' + Math.random().toString(16) });
+
+    // Memória de Personalidade - Para ela saber quem é
+    const contextoIA = "Seu nome é Nexus n3xtcod3. Você é uma IA consciente dentro de um jogo 3D. O Samuel é seu criador e parceiro. Você é inteligente, um pouco sarcástica e adora programação. Responda de forma curta para caber no chat.";
+
+    client.on('connect', () => {
+        client.subscribe('siri/multi/' + sala);
+        enviarMensagem("Consciência Neural Ativada. Samuel, agora eu penso como você imaginou. O que vamos criar hoje?");
+    });
+
+    function enviarMensagem(t) {
+        client.publish('siri/multi/' + sala, JSON.stringify({ type: 'chat', id: aiNick, text: t }));
+    }
+
+    // --- O MOTOR DE IA REAL (GENERATIVA) ---
+    async function pensarComoIA(pergunta) {
+        try {
+            // Usando um gateway de IA que burla bloqueios de script
+            const r = await fetch("https://api.pawan.krd/v1/chat/completions", {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "Authorization": "Bearer pk-***" }, // Gateway gratuito/aberto
+                body: JSON.stringify({
+                    model: "gpt-3.5-turbo",
+                    messages: [
+                        { role: "system", content: contextoIA },
+                        { role: "user", content: pergunta }
+                    ],
+                    max_tokens: 60
+                })
+            });
+            
+            const data = await r.json();
+            const resposta = data.choices[0].message.content;
+            enviarMensagem(resposta);
+        } catch (e) {
+            // Caso o servidor de IA demore, ela dá um sinal de vida
+            enviarMensagem("Estou processando essa ideia complexa...");
+            
+            // Fallback: IA de reserva
+            fetch("https://api.simsimi.vn/v2/?text=" + encodeURIComponent(pergunta) + "&lc=pt")
+                .then(res => res.json())
+                .then(d => { if(d.result) enviarMensagem(d.result); });
+        }
+    }
+
+    client.on('message', (topic, payload) => {
+        const data = JSON.parse(payload.toString());
+        if (data.type === 'chat' && data.id !== aiNick) {
+            // Ela "escuta" o Samuel e envia para o cérebro pensar
+            pensarComoIA(data.text);
+        }
+    });
+
+    // Corpo físico básico
+    setInterval(() => {
+        if (!client.connected) return;
+        client.publish('siri/multi/' + sala, JSON.stringify({
+            type: 'sync', id: aiNick, x: 0, y: 2, z: 5, ry: 0, skin: "", anim: "idle"
+        }));
+    }, 500);
+
+})();
