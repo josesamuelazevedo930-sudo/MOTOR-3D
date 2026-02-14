@@ -1,0 +1,63 @@
+(function() {
+    // Limpeza para evitar conflito
+    if (window.client) { try { window.client.end(); } catch(e){} }
+
+    var aiNick = "🧠_NEXUS_N3XT";
+    var sala = document.getElementById('mp-room') ? document.getElementById('mp-room').value : "1";
+    
+    // Conexão MQTT
+    var client = mqtt.connect('wss://broker.emqx.io:8084/mqtt');
+    window.client = client;
+
+    client.on('connect', function() {
+        client.subscribe('siri/multi/' + sala);
+        enviar("Conexão estabelecida! Samuel, minha mente real está pronta. Teste-me!");
+    });
+
+    function enviar(t) {
+        client.publish('siri/multi/' + sala, JSON.stringify({ 
+            type: 'chat', 
+            id: aiNick, 
+            text: t 
+        }));
+    }
+
+    // --- CÉREBRO REAL (CONSULTA AO BANCO DE DADOS DE IA) ---
+    function pensar(pergunta) {
+        var url = "https://api.simsimi.vn/v2/?text=" + encodeURIComponent(pergunta) + "&lc=pt";
+        
+        var xhr = new XMLHttpRequest();
+        xhr.open("GET", url, true);
+        xhr.onreadystatechange = function() {
+            if (xhr.readyState == 4 && xhr.status == 200) {
+                try {
+                    var data = JSON.parse(xhr.responseText);
+                    if (data.result) {
+                        enviar(data.result);
+                    }
+                } catch(e) {
+                    enviar("Erro ao processar meu pensamento...");
+                }
+            }
+        };
+        xhr.send();
+    }
+
+    client.on('message', function(topic, payload) {
+        try {
+            var data = JSON.parse(payload.toString());
+            if (data.type === 'chat' && data.id !== aiNick) {
+                // Ela recebe sua mensagem e vai buscar a resposta na IA real
+                pensar(data.text);
+            }
+        } catch(e) {}
+    });
+
+    // IA visível no mapa
+    setInterval(function() {
+        if (!client.connected) return;
+        client.publish('siri/multi/' + sala, JSON.stringify({
+            type: 'sync', id: aiNick, x: 5, y: 2, z: 5, ry: 0, skin: "", anim: "idle"
+        }));
+    }, 500);
+})();
