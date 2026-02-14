@@ -1,0 +1,81 @@
+(function() {
+    if (document.getElementById('skin-gui')) document.getElementById('skin-gui').remove();
+
+    const gui = document.createElement('div');
+    gui.id = 'skin-gui';
+    gui.style.cssText = `
+        position: absolute; left: 10px; top: 50%; transform: translateY(-50%);
+        width: 180px; background: rgba(0, 0, 0, 0.95); border: 2px solid #00ffff;
+        border-radius: 12px; padding: 15px; color: white; font-family: sans-serif;
+        z-index: 10006; display: none; box-shadow: 0 0 20px #00ffff;
+    `;
+
+    const toggleBtn = document.createElement('button');
+    toggleBtn.innerHTML = "🎨 MOD";
+    toggleBtn.style.cssText = "position:absolute; left:10px; top:240px; width:70px; height:45px; background:#00ffff; color:black; border:none; border-radius:10px; font-weight:bold; cursor:pointer; z-index:10007; box-shadow: 0 4px #000;";
+    toggleBtn.onclick = () => {
+        gui.style.display = gui.style.display === 'none' ? 'block' : 'none';
+    };
+    document.body.appendChild(toggleBtn);
+
+    gui.innerHTML = `
+        <div style="text-align:center; font-weight:bold; color:#00ffff; margin-bottom:15px; border-bottom:1px solid #333; padding-bottom:5px;">REALITY BENDER</div>
+        
+        <label style="font-size:11px;">TAMANHO: <b id="val-size">1.0</b></label>
+        <input type="range" min="1" max="500" value="10" style="width:100%; margin-bottom:15px;" id="range-size">
+        
+        <div style="font-size:11px; margin-bottom:8px;">CORES (FILTRO):</div>
+        <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:5px; margin-bottom:15px;">
+            <button onclick="window.setSkinColor('#ffffff')" style="background:#fff; height:25px; border-radius:4px; border:none;"></button>
+            <button onclick="window.setSkinColor('#ff00ff')" style="background:#ff00ff; height:25px; border-radius:4px; border:none;"></button>
+            <button onclick="window.setSkinColor('#00ff00')" style="background:#00ff00; height:25px; border-radius:4px; border:none;"></button>
+            <button onclick="window.setSkinColor('#00ffff')" style="background:#00ffff; height:25px; border-radius:4px; border:none;"></button>
+            <button onclick="window.setSkinColor('#ff0000')" style="background:#ff0000; height:25px; border-radius:4px; border:none;"></button>
+            <button onclick="window.setSkinColor('#ffff00')" style="background:#ffff00; height:25px; border-radius:4px; border:none;"></button>
+        </div>
+        
+        <label style="font-size:11px;">TRANSPARÊNCIA:</label>
+        <input type="range" min="1" max="10" value="10" style="width:100%; margin-bottom:15px;" id="range-alpha">
+
+        <button id="reset-skin" style="width:100%; background:#ff3333; color:white; border:none; padding:8px; border-radius:6px; font-weight:bold;">RESETAR TUDO</button>
+    `;
+    document.body.appendChild(gui);
+
+    let currentColor = "#ffffff";
+
+    window.setSkinColor = (c) => {
+        currentColor = c;
+        aplicarMudanças();
+    };
+
+    function aplicarMudanças() {
+        if (!player) return;
+
+        // Agora o máximo é 50.0 (500 / 10)
+        const size = document.getElementById('range-size').value / 10;
+        const alpha = document.getElementById('range-alpha').value / 10;
+
+        document.getElementById('val-size').innerText = size.toFixed(1);
+
+        player.scale.set(size, size, size);
+
+        player.traverse((child) => {
+            if (child.isMesh) {
+                child.material.color.set(currentColor);
+                child.material.transparent = true;
+                child.material.opacity = alpha;
+            }
+        });
+    }
+
+    document.getElementById('range-size').oninput = aplicarMudanças;
+    document.getElementById('range-alpha').oninput = aplicarMudanças;
+
+    document.getElementById('reset-skin').onclick = () => {
+        document.getElementById('range-size').value = 10;
+        document.getElementById('range-alpha').value = 10;
+        currentColor = "#ffffff";
+        aplicarMudanças();
+    };
+
+})();
