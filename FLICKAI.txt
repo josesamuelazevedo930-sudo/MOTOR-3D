@@ -1,0 +1,248 @@
+// ============================================
+// CHAT IA REAL - PUTER.JS (GRATUITO, SEM CHAVE)
+// CORRIGIDO E TESTADO PARA FUNCIONAR NO JOGO
+// ============================================
+
+// 1. LIMPEZA COMPLETA
+const elementos = ['ia-btn', 'ia-panel', 'ia-chat', 'ia-loader'];
+elementos.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.remove();
+});
+
+// 2. REMOVE SCRIPTS PUTER ANTIGOS
+document.querySelectorAll('script[src*="puter"]').forEach(s => s.remove());
+
+// 3. CARREGA PUTER.JS (IA GRATUITA)
+const puterScript = document.createElement('script');
+puterScript.src = 'https://js.puter.com/v2/';
+puterScript.async = true;
+puterScript.onload = () => {
+    console.log('✅ Puter.js carregado com sucesso!');
+    criarInterfaceIA();
+};
+puterScript.onerror = () => {
+    console.error('❌ Erro ao carregar Puter.js');
+    // Fallback - Cria interface mesmo sem IA (modo offline)
+    criarInterfaceIA(true);
+};
+document.head.appendChild(puterScript);
+
+// 4. FUNÇÃO PARA CRIAR INTERFACE
+function criarInterfaceIA(modoOffline = false) {
+    console.log('🤖 Criando interface...');
+    
+    // ESTADO
+    let codigoGerado = '';
+    
+    // BOTÃO FLUTUANTE - BEM GRANDE E VISÍVEL
+    const btnIA = document.createElement('button');
+    btnIA.id = 'ia-btn';
+    btnIA.innerHTML = '🤖 IA';
+    btnIA.style.cssText = `
+        position: fixed;
+        top: 20px;
+        left: 20px;
+        z-index: 999999;
+        background: #00ff00;
+        color: black;
+        border: 4px solid white;
+        border-radius: 60px;
+        padding: 15px 30px;
+        font-size: 24px;
+        font-weight: 900;
+        cursor: pointer;
+        box-shadow: 0 0 30px #00ff00, 0 0 60px #00ff00;
+        animation: piscarIA 1.5s infinite;
+        text-shadow: 2px 2px 0px white;
+    `;
+    
+    // ANIMAÇÃO
+    const style = document.createElement('style');
+    style.textContent = `
+        @keyframes piscarIA {
+            0% { transform: scale(1); box-shadow: 0 0 30px #00ff00; }
+            50% { transform: scale(1.1); box-shadow: 0 0 60px #00ff00; background: #00ff00; }
+            100% { transform: scale(1); box-shadow: 0 0 30px #00ff00; }
+        }
+    `;
+    document.head.appendChild(style);
+    
+    document.body.appendChild(btnIA);
+    
+    // PAINEL DO CHAT
+    const panelIA = document.createElement('div');
+    panelIA.id = 'ia-panel';
+    panelIA.style.cssText = `
+        position: fixed;
+        top: 100px;
+        left: 20px;
+        width: 380px;
+        height: 500px;
+        background: rgba(0,0,0,0.98);
+        border: 4px solid #00ff00;
+        border-radius: 20px;
+        padding: 20px;
+        color: white;
+        font-family: Arial, sans-serif;
+        z-index: 999998;
+        display: none;
+        flex-direction: column;
+        box-shadow: 0 0 50px #00ff00;
+        backdrop-filter: blur(5px);
+    `;
+    
+    panelIA.innerHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; border-bottom: 2px solid #00ff00; padding-bottom: 10px;">
+            <span style="color: #00ff00; font-size: 22px; font-weight: bold;">🤖 IA ASSISTENTE ${modoOffline ? '(OFFLINE)' : ''}</span>
+            <button id="ia-fechar" style="background: red; color: white; border: none; border-radius: 50%; width: 35px; height: 35px; font-size: 18px; cursor: pointer; font-weight: bold;">✕</button>
+        </div>
+        
+        <div id="ia-mensagens" style="flex: 1; overflow-y: auto; background: #111; border-radius: 10px; padding: 10px; margin-bottom: 15px; font-size: 14px; line-height: 1.4;">
+            <div style="color: #00ff00; margin-bottom: 8px;">🤖 IA: Olá! Sou IA real (Claude/Grok via Puter).</div>
+            <div style="color: #888; margin-bottom: 5px;">💡 Exemplos:</div>
+            <div style="color: #aaa; margin-left: 10px;">- "Crie um script de teletransporte"</div>
+            <div style="color: #aaa; margin-left: 10px;">- "Como faço para voar mais rápido?"</div>
+            <div style="color: #aaa; margin-left: 10px;">- "Gere um código para adicionar moedas"</div>
+        </div>
+        
+        <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+            <input id="ia-input" type="text" placeholder="Digite sua pergunta..." style="flex: 1; padding: 12px; background: #222; color: white; border: 2px solid #00ff00; border-radius: 8px; font-size: 14px;">
+            <button id="ia-enviar" style="padding: 12px 20px; background: #00ff00; color: black; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 16px;">➤</button>
+        </div>
+        
+        <div id="ia-code-area" style="display: none; margin-top: 5px;">
+            <button id="ia-aplicar" style="width: 100%; padding: 12px; background: #007bff; color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 14px;">
+                📥 APLICAR CÓDIGO GERADO
+            </button>
+        </div>
+        
+        <div id="ia-status" style="font-size: 11px; color: #666; text-align: center; margin-top: 5px;">
+            ${modoOffline ? '⚠️ Modo offline - Respostas locais' : '✅ Conectado à IA'}
+        </div>
+    `;
+    
+    document.body.appendChild(panelIA);
+    
+    // REFERÊNCIAS
+    const mensagensDiv = document.getElementById('ia-mensagens');
+    const inputIA = document.getElementById('ia-input');
+    const btnEnviar = document.getElementById('ia-enviar');
+    const btnFechar = document.getElementById('ia-fechar');
+    const codeArea = document.getElementById('ia-code-area');
+    const btnAplicar = document.getElementById('ia-aplicar');
+    const statusDiv = document.getElementById('ia-status');
+    
+    // FUNÇÃO PARA ADICIONAR MENSAGEM
+    function addMsg(quem, texto, cor = '#fff') {
+        const msgDiv = document.createElement('div');
+        msgDiv.style.marginBottom = '8px';
+        msgDiv.style.padding = '5px';
+        msgDiv.style.borderLeft = `3px solid ${cor === '#00ff00' ? '#0f0' : '#ff0'}`;
+        msgDiv.innerHTML = `<span style="color: ${cor}; font-weight: bold;">${quem}:</span> <span style="color: white;">${texto}</span>`;
+        mensagensDiv.appendChild(msgDiv);
+        mensagensDiv.scrollTop = mensagensDiv.scrollHeight;
+    }
+    
+    // FUNÇÃO PARA ENVIAR PARA IA
+    async function enviarParaIA() {
+        const pergunta = inputIA.value.trim();
+        if (!pergunta) return;
+        
+        addMsg('Você', pergunta, '#ff0');
+        inputIA.value = '';
+        statusDiv.innerHTML = '⏳ Pensando...';
+        
+        try {
+            if (!modoOffline && window.puter && window.puter.ai) {
+                // MODO REAL - USA PUTER.AI
+                const resposta = await puter.ai.chat(pergunta, {
+                    model: 'claude-3.5-sonnet',
+                    stream: false
+                });
+                
+                addMsg('IA', resposta, '#0f0');
+                
+                // DETECTA SE TEM CÓDIGO
+                if (resposta.includes('```javascript') || resposta.includes('```js')) {
+                    const codigo = resposta.match(/```(?:javascript|js)\s*([\s\S]*?)```/);
+                    if (codigo && codigo[1]) {
+                        codigoGerado = codigo[1].trim();
+                        codeArea.style.display = 'block';
+                        addMsg('Sistema', '✅ Código detectado! Clique em "APLICAR" para executar.', '#0ff');
+                    }
+                }
+                
+                statusDiv.innerHTML = '✅ Respondido';
+            } else {
+                // MODO OFFLINE - RESPOSTAS SIMULADAS
+                setTimeout(() => {
+                    const respostas = [
+                        "Para criar um script de pulo duplo, use: `velY = 0.8` duas vezes.",
+                        "Você pode aumentar a velocidade: `moveSpeed = 2.0`",
+                        "Tente: `fly = true` para ativar modo voo.",
+                        "Script de moedas: crie esferas e detecte colisão."
+                    ];
+                    const resposta = respostas[Math.floor(Math.random() * respostas.length)];
+                    addMsg('IA (offline)', resposta, '#0f0');
+                    statusDiv.innerHTML = '✅ Modo offline';
+                }, 1000);
+            }
+        } catch (erro) {
+            console.error('Erro IA:', erro);
+            addMsg('Erro', 'Falha na conexão com IA', '#f00');
+            statusDiv.innerHTML = '❌ Erro';
+        }
+    }
+    
+    // FUNÇÃO PARA APLICAR CÓDIGO
+    function aplicarCodigo() {
+        if (!codigoGerado) return;
+        
+        try {
+            eval(codigoGerado);
+            addMsg('Sistema', '✅ Código executado com sucesso!', '#0ff');
+            codeArea.style.display = 'none';
+            codigoGerado = '';
+        } catch (erro) {
+            addMsg('Erro', 'Falha ao executar: ' + erro.message, '#f00');
+        }
+    }
+    
+    // EVENTOS
+    btnIA.onclick = () => {
+        panelIA.style.display = 'flex';
+    };
+    
+    btnFechar.onclick = () => {
+        panelIA.style.display = 'none';
+    };
+    
+    btnEnviar.onclick = enviarParaIA;
+    
+    inputIA.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') enviarParaIA();
+    });
+    
+    if (btnAplicar) {
+        btnAplicar.onclick = aplicarCodigo;
+    }
+    
+    // ABRE O PAINEL AUTOMATICAMENTE PARA TESTE
+    setTimeout(() => {
+        panelIA.style.display = 'flex';
+        addMsg('Sistema', '✅ IA carregada! Faça uma pergunta.', '#0ff');
+    }, 1000);
+    
+    console.log('✅ Interface IA criada!');
+}
+
+// 5. TIMEOUT DE SEGURANÇA
+setTimeout(() => {
+    if (!document.getElementById('ia-btn')) {
+        console.log('⚠️ Criando interface de fallback...');
+        criarInterfaceIA(true);
+    }
+}, 3000);
+
+alert('🤖 Script IA carregado! Clique no botão verde "IA" no canto superior esquerdo.');
