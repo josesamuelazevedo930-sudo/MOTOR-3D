@@ -1,0 +1,155 @@
+// Script para adicionar um botão GUI que abre/fecha um "mini PC" funcional
+// Como um Windows simples: navegador (iframe), leitor de arquivos (input file/File System Access API fallback), configurações básicas
+// Para TVs antigas, usa input file (usuário seleciona manualmente) - não dá para "burlar" bloqueio de segurança do browser
+// Imagens decorativas: ícones de CDN livre (Flaticon ou similar)
+// O painel é 2D overlay no jogo, com apps funcionais
+// Importe como script .txt no jogo
+
+if (document.getElementById('mini-pc-btn')) document.getElementById('mini-pc-btn').remove();
+if (document.getElementById('mini-pc-panel')) document.getElementById('mini-pc-panel').remove();
+
+const miniPCBtn = document.createElement('button');
+miniPCBtn.id = 'mini-pc-btn';
+miniPCBtn.className = 'ui-btn';
+miniPCBtn.style.background = '#4a90e2'; // Azul Windows
+miniPCBtn.style.top = '240px';
+miniPCBtn.innerText = 'MINI PC';
+miniPCBtn.onclick = toggleMiniPC;
+document.body.appendChild(miniPCBtn);
+
+const miniPCPanel = document.createElement('div');
+miniPCPanel.id = 'mini-pc-panel';
+miniPCPanel.className = 'panel';
+miniPCPanel.style.top = '295px';
+miniPCPanel.style.width = '280px';
+miniPCPanel.style.maxHeight = '60vh';
+miniPCPanel.style.display = 'none';
+miniPCPanel.style.backgroundImage = 'url(https://cdn.pixabay.com/photo/2016/03/27/22/22/windows-1284319_960_720.jpg)'; // Imagem decorativa de desktop Windows (livre)
+miniPCPanel.style.backgroundSize = 'cover';
+miniPCPanel.style.backgroundPosition = 'center';
+document.body.appendChild(miniPCPanel);
+miniPCPanel.innerHTML = `
+    <div style="background: rgba(0,0,0,0.7); padding:10px; border-radius:10px;">
+        <b style="color:#fff;">Mini PC Funcional</b>
+        <hr style="border:0; border-top:1px solid #444; margin:10px 0;">
+        <button class="opt" onclick="openBrowser()" style="background:#007bff;">🌐 Navegador</button>
+        <button class="opt" onclick="openFileReader()" style="background:#ff8800;">📂 Arquivos da TV</button>
+        <button class="opt" onclick="openSettings()" style="background:#888;">⚙️ Configurações</button>
+        <hr style="border:0; border-top:1px solid #444; margin:10px 0;">
+        <div id="mini-app-content" style="background:#fff; color:#000; padding:10px; border-radius:6px; max-height:30vh; overflow-y:auto; display:none;"></div>
+        <button class="opt" onclick="closeMiniApp()" style="background:#ff3333; font-size:11px; margin-top:10px; display:none;" id="close-app-btn">Fechar App</button>
+    </div>
+`;
+
+function toggleMiniPC() {
+    const panel = document.getElementById('mini-pc-panel');
+    panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+}
+
+window.openBrowser = function() {
+    const content = document.getElementById('mini-app-content');
+    content.style.display = 'block';
+    content.innerHTML = `
+        <input id="url-input" placeholder="Digite URL (ex: google.com)" style="width:90%; margin-bottom:5px;">
+        <button onclick="loadIframe()" style="background:#007bff; color:white; border:none; padding:5px;">Ir</button>
+        <iframe id="browser-iframe" style="width:100%; height:200px; border:none; margin-top:5px;"></iframe>
+    `;
+    document.getElementById('close-app-btn').style.display = 'block';
+};
+
+window.loadIframe = function() {
+    let url = document.getElementById('url-input').value.trim();
+    if (!url.startsWith('http')) url = 'https://' + url;
+    document.getElementById('browser-iframe').src = url;
+};
+
+window.openFileReader = function() {
+    const content = document.getElementById('mini-app-content');
+    content.style.display = 'block';
+    content.innerHTML = `
+        <p style="font-size:11px; color:#000;">Selecione arquivo da TV (txt, img, pdf):</p>
+        <input type="file" id="file-input" style="width:90%;">
+        <button onclick="readFile()" style="background:#ff8800; color:white; border:none; padding:5px; margin-top:5px;">Ler</button>
+        <div id="file-content" style="margin-top:10px; font-size:10px; max-height:150px; overflow-y:auto;"></div>
+    `;
+    document.getElementById('close-app-btn').style.display = 'block';
+    // Nota: Para TVs antigas, input file pode funcionar (usuário seleciona manualmente). Não dá para "burlar" bloqueio de acesso automático - browsers impedem por segurança.
+};
+
+window.readFile = function() {
+    const input = document.getElementById('file-input');
+    const file = input.files[0];
+    if (!file) return;
+
+    const contentDiv = document.getElementById('file-content');
+    const reader = new FileReader();
+
+    reader.onload = (e) => {
+        if (file.type.startsWith('image/')) {
+            contentDiv.innerHTML = `<img src="${e.target.result}" style="max-width:100%; max-height:150px;">`;
+        } else if (file.type === 'application/pdf') {
+            contentDiv.innerHTML = 'PDF carregado - use um leitor externo ou visualize no navegador (não suportado aqui).';
+        } else {
+            contentDiv.innerHTML = `<pre>${e.target.result}</pre>`;
+        }
+    };
+
+    reader.readAsDataURL(file); // Para imagens/PDF, ou readAsText para txt
+};
+
+window.openSettings = function() {
+    const content = document.getElementById('mini-app-content');
+    content.style.display = 'block';
+    content.innerHTML = `
+        <p style="font-size:12px; color:#000;">Configurações Básicas:</p>
+        <button onclick="resetGame()" style="background:#888; color:white; border:none; padding:5px; margin:5px 0;">Resetar Jogo</button>
+        <button onclick="toggleFullScreen()" style="background:#888; color:white; border:none; padding:5px; margin:5px 0;">Tela Cheia</button>
+        <img src="https://cdn.icon-icons.com/icons2/2248/PNG/512/settings_icon_136295.png" style="width:50px; height:50px; margin-top:10px;"> <!-- Imagem decorativa de configurações -->
+    `;
+    document.getElementById('close-app-btn').style.display = 'block';
+};
+
+window.resetGame = function() {
+    location.reload();
+};
+
+window.toggleFullScreen = function() {
+    if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen();
+    } else {
+        document.exitFullscreen();
+    }
+};
+
+window.closeMiniApp = function() {
+    const content = document.getElementById('mini-app-content');
+    content.style.display = 'none';
+    content.innerHTML = '';
+    document.getElementById('close-app-btn').style.display = 'none';
+};
+
+// Para fechar o mini PC inteiro
+miniPCBtn.addEventListener('dblclick', () => {
+    toggleMiniPC();
+    closeMiniApp();
+});
+
+// Função para ler arquivos (se File System Access API disponível, fallback input file)
+async function openAdvancedFileReader() {
+    try {
+        if ('showDirectoryPicker' in window) {
+            const dirHandle = await window.showDirectoryPicker();
+            const fileHandle = await dirHandle.getFileHandle('exemplo.txt'); // Exemplo - ajuste para arquivo real
+            const file = await fileHandle.getFile();
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                console.log(e.target.result);
+            };
+            reader.readAsText(file);
+        } else {
+            addLog("SISTEMA", "API de arquivos não suportada na TV - use input file.");
+        }
+    } catch (e) {
+        addLog("ERRO", "Acesso a arquivos bloqueado: " + e.message);
+    }
+}
