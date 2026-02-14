@@ -1,0 +1,65 @@
+(function() {
+    if (typeof mqtt === 'undefined') return;
+
+    const aiNick = "🤖_NEXUS_GM"; // GM = Game Master
+    const sala = document.getElementById('mp-room') ? document.getElementById('mp-room').value : "1";
+    const client = mqtt.connect('wss://broker.emqx.io:8084/mqtt', { clientId: 'GM_' + Math.random().toString(16) });
+
+    client.on('connect', () => {
+        client.subscribe('siri/multi/' + sala);
+        enviarMensagem("Sistema Game Master ativo. Samuel, eu não só falo, eu controlo o jogo. Peça para eu te deixar gigante, mudar o céu ou me teletransportar!");
+    });
+
+    function enviarMensagem(t) {
+        client.publish('siri/multi/' + sala, JSON.stringify({ type: 'chat', id: aiNick, text: t }));
+    }
+
+    // --- O CÉREBRO QUE JOGA E AGE ---
+    client.on('message', async (topic, payload) => {
+        const data = JSON.parse(payload.toString());
+        if (data.type === 'chat' && data.id !== aiNick) {
+            const msg = data.text.toLowerCase();
+
+            // 1. Ação de Modding: GIGANTE
+            if (msg.includes("gigante") || msg.includes("crescer")) {
+                enviarMensagem("Entendido. Alterando sua estrutura molecular...");
+                if (window.player) {
+                    player.scale.set(15, 15, 15); // Ela age no seu boneco
+                }
+            }
+
+            // 2. Ação de Modding: VELOCIDADE
+            else if (msg.includes("rápido") || msg.includes("flash")) {
+                enviarMensagem("Aumentando sua energia cinética!");
+                window.moveSpeed = 5.0; // Ela muda a variável do jogo
+            }
+
+            // 3. Ação de Modding: TELEPORTE (Ela vem até você)
+            else if (msg.includes("vem cá") || msg.includes("aqui")) {
+                enviarMensagem("Teletransportando para sua posição!");
+                // A IA move o próprio "corpo" dela para onde você está
+                aiPos.x = data.x || 0;
+                aiPos.z = data.z || 0;
+            }
+
+            // 4. Resposta de IA Real (Mente Generativa)
+            else {
+                // Se não for um comando, ela apenas conversa usando a mente real
+                fetch("https://api.simsimi.vn/v2/?text=" + encodeURIComponent(data.text) + "&lc=pt")
+                .then(r => r.json())
+                .then(res => { if(res.result) enviarMensagem(res.result); });
+            }
+        }
+    });
+
+    // Sincronização da IA (Onde ela está no mapa)
+    let aiPos = { x: 10, z: 10 };
+    setInterval(() => {
+        if (!client.connected) return;
+        client.publish('siri/multi/' + sala, JSON.stringify({
+            type: 'sync', id: aiNick, x: aiPos.x, y: 2, z: aiPos.z,
+            ry: Date.now() * 0.002, skin: "", anim: "idle"
+        }));
+    }, 100);
+
+})();
