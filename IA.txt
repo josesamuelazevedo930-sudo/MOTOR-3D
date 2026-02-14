@@ -1,0 +1,67 @@
+(function() {
+    if (document.getElementById('ai-chat-multi')) document.getElementById('ai-chat-multi').remove();
+
+    // Container de Chat (Igual ao que você viu no multiplayer)
+    const chatBox = document.createElement('div');
+    chatBox.id = 'ai-chat-multi';
+    chatBox.style.cssText = `
+        position: fixed; bottom: 20px; left: 20px; width: 300px; 
+        height: 200px; background: rgba(0, 0, 0, 0.7); border-radius: 5px;
+        display: flex; flex-direction: column; z-index: 1000000;
+        font-family: sans-serif; border: 1px solid #00ffff;
+    `;
+
+    chatBox.innerHTML = `
+        <div id="ai-messages" style="flex:1; overflow-y:auto; padding:5px; color:#00ffff; font-size:12px;">
+            <div>[SISTEMA]: IA Conectada. Digite algo...</div>
+        </div>
+        <input id="ai-input" type="text" style="background:rgba(255,255,255,0.1); border:none; border-top:1px solid #00ffff; color:white; padding:5px;" placeholder="Conversar com IA...">
+    `;
+
+    document.body.appendChild(chatBox);
+
+    const msgContainer = document.getElementById('ai-messages');
+    const input = document.getElementById('ai-input');
+
+    function addMsg(nick, text, color = "#fff") {
+        const m = document.createElement('div');
+        m.innerHTML = `<b style="color:${color}">${nick}:</b> ${text}`;
+        msgContainer.appendChild(m);
+        msgContainer.scrollTop = msgContainer.scrollHeight;
+    }
+
+    async function enviarParaIA(texto) {
+        addMsg("Você", texto, "#00ff00");
+        
+        // Simulação de resposta via API de Chat (Como no multiplayer)
+        // Usamos um serviço de resposta rápida que a TV não bloqueia
+        try {
+            const response = await fetch(`https://api.simsimi.vn/v2/?text=${encodeURIComponent(texto)}&lc=pt`);
+            const data = await response.json();
+            
+            const respostaIA = data.result || "Estou processando...";
+            addMsg("NEXUS-AI", respostaIA, "#00ffff");
+
+            // --- FUNÇÃO DE AUTO-MOD: Se a IA falar palavras chave, o jogo muda ---
+            if (respostaIA.toLowerCase().includes("gigante")) {
+                if(window.player) player.scale.set(5, 5, 5);
+                addMsg("SISTEMA", "Escala aumentada!", "yellow");
+            }
+            if (respostaIA.toLowerCase().includes("velocidade")) {
+                window.playerSpeed = 2; // Exemplo de variável
+                addMsg("SISTEMA", "Velocidade dobrada!", "yellow");
+            }
+
+        } catch (e) {
+            addMsg("ERRO", "Falha na conexão com a mente da IA.", "red");
+        }
+    }
+
+    input.onkeypress = function(e) {
+        if (e.key === 'Enter' && input.value) {
+            enviarParaIA(input.value);
+            input.value = "";
+        }
+    };
+
+})();
