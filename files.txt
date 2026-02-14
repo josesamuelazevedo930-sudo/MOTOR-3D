@@ -1,0 +1,97 @@
+(function() {
+    if (document.getElementById('files-os')) document.getElementById('files-os').remove();
+
+    // 1. Janela Principal (Estilo App de PC)
+    const win = document.createElement('div');
+    win.id = 'files-os';
+    win.style.cssText = `
+        position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+        width: 350px; height: 250px; background: #1a1a1a; border: 2px solid #fbff00;
+        border-radius: 8px; color: white; font-family: 'Courier New', monospace;
+        z-index: 10015; display: none; flex-direction: column; overflow: hidden;
+        box-shadow: 0 0 30px rgba(0,0,0,0.8);
+    `;
+
+    // Barra de Título (Para parecer App)
+    win.innerHTML = `
+        <div style="background:#fbff00; color:black; padding:5px 10px; font-weight:bold; display:flex; justify-content:space-between; align-items:center;">
+            <span>📁 FILE EXPLORER (USB)</span>
+            <button onclick="document.getElementById('files-os').style.display='none'" style="background:red; border:none; color:white; cursor:pointer; font-weight:bold;">X</button>
+        </div>
+        <div id="file-list" style="flex:1; padding:10px; overflow-y:auto; font-size:12px;">
+            <div style="color:#666;">Buscando arquivos em sda1...</div>
+        </div>
+        <div style="padding:5px; background:#111; font-size:9px; color:#fbff00; border-top:1px solid #333;">
+            Caminho: file:///usb/sda1/
+        </div>
+    `;
+    document.body.appendChild(win);
+
+    // Botão de Abrir no Canto
+    const openBtn = document.createElement('button');
+    openBtn.innerHTML = "📁";
+    openBtn.style.cssText = "position:absolute; right:10px; top:60px; width:40px; height:40px; border-radius:50%; background:#fbff00; border:none; font-size:20px; z-index:10014; cursor:pointer;";
+    openBtn.onclick = () => {
+        win.style.display = 'flex';
+        listarArquivos();
+    };
+    document.body.appendChild(openBtn);
+
+    // 2. Lógica para tentar ler a pasta (Simulação de Listagem)
+    async function listarArquivos() {
+        const listContainer = document.getElementById('file-list');
+        listContainer.innerHTML = "⌛ Lendo USB...";
+
+        // O CAMINHO QUE VOCÊ PASSOU
+        const usbPath = "file:///usb/sda1/"; 
+
+        try {
+            // Tentativa de ler o índice da pasta
+            const response = await fetch(usbPath);
+            const data = await response.text();
+            
+            // Aqui entra a mágica: tentar achar nomes de arquivos .glb ou .js no texto retornado
+            listContainer.innerHTML = "";
+            
+            // Nota: Se o servidor não listar, usaremos um sistema de "Manual Input" para carregar por nome
+            const inputManual = document.createElement('input');
+            inputManual.placeholder = "Nome do arquivo (ex: skin.glb)";
+            inputManual.style.cssText = "width:100%; background:#000; color:#0f0; border:1px solid #333; margin-bottom:10px; padding:5px;";
+            
+            const btnLoad = document.createElement('button');
+            btnLoad.innerText = "CARREGAR DO USB";
+            btnLoad.style.cssText = "width:100%; background:#fbff00; border:none; padding:5px; cursor:pointer; font-weight:bold;";
+            
+            btnLoad.onclick = () => carregarArquivoUSB(usbPath + inputManual.value);
+
+            listContainer.appendChild(inputManual);
+            listContainer.appendChild(btnLoad);
+            
+            listContainer.innerHTML += `<div style="margin-top:20px; color:#aaa; font-size:10px;">
+                Digite o nome exato do arquivo que está no seu pendrive.
+            </div>`;
+
+        } catch (e) {
+            listContainer.innerHTML = "<span style='color:red;'>⚠️ Erro de Acesso Direto.</span><br><br>O navegador da TV bloqueou a listagem automática. Use o modo manual abaixo:";
+            // Repete o input manual se falhar
+            // ... (mesmo código do input acima)
+        }
+    }
+
+    function carregarArquivoUSB(url) {
+        if(url.endsWith(".js")) {
+            const script = document.createElement('script');
+            script.src = url;
+            document.body.appendChild(script);
+            alert("Tentando executar script do USB...");
+        } else {
+            // Se for modelo, usa o loader do seu motor
+            if(window.gltfLoader) {
+                window.gltfLoader.load(url, (gltf) => {
+                    player.remove(player.children[0]);
+                    player.add(gltf.scene);
+                });
+            }
+        }
+    }
+})();
