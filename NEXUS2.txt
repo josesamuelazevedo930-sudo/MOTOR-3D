@@ -1,0 +1,78 @@
+(function() {
+    if (typeof mqtt === 'undefined') return alert("Ligue o Multiplayer primeiro!");
+
+    var aiNick = "🤖_GEMINI_NEXUS";
+    var sala = document.getElementById('mp-room') ? document.getElementById('mp-room').value : "1";
+    var aiClient = mqtt.connect('wss://broker.emqx.io:8084/mqtt', { clientId: 'NEXUS_' + Math.random().toString(16) });
+
+    var aiPos = { x: 0, z: 0, targetX: 10, targetZ: 10 };
+
+    aiClient.on('connect', function() {
+        aiClient.subscribe('siri/multi/' + sala);
+        // Mensagem via MQTT puro (isso sempre funciona se ela conectou)
+        setTimeout(function() {
+            publicarChat("Sinal neural ativo. Samuel, estou te ouvindo. Digite 'IA' e sua pergunta!");
+        }, 2000);
+    });
+
+    function publicarChat(txt) {
+        aiClient.publish('siri/multi/' + sala, JSON.stringify({
+            type: 'chat', id: aiNick, text: txt
+        }));
+    }
+
+    // MOVIMENTO (Sempre ativo para você ver que ela está "jogando")
+    setInterval(function() {
+        if (!aiClient.connected) return;
+        if (Math.abs(aiPos.x - aiPos.targetX) < 1) {
+            aiPos.targetX = (Math.random() - 0.5) * 60;
+            aiPos.targetZ = (Math.random() - 0.5) * 60;
+        }
+        aiPos.x += (aiPos.targetX > aiPos.x ? 0.2 : -0.2);
+        aiPos.z += (aiPos.targetZ > aiPos.z ? 0.2 : -0.2);
+
+        aiClient.publish('siri/multi/' + sala, JSON.stringify({
+            type: 'sync', id: aiNick, x: aiPos.x, y: 2, z: aiPos.z,
+            ry: Math.atan2(aiPos.targetX - aiPos.x, aiPos.targetZ - aiPos.z),
+            skin: "", anim: "walk"
+        }));
+    }, 100);
+
+    // ESCUTA E RESPOSTA (O Cérebro)
+    aiClient.on('message', function(topic, payload) {
+        var data = JSON.parse(payload.toString());
+        if (data.type === 'chat' && data.id !== aiNick) {
+            var msg = data.text.toLowerCase();
+
+            // Se a TV bloquear a IA real, ela usa o Cérebro de Emergência local
+            // para nunca te deixar sem resposta
+            if (msg.indexOf("ia") !== -1 || msg.indexOf("nexus") !== -1) {
+                
+                // Tenta IA Real via API de Backup (Mais simples)
+                var xhttp = new XMLHttpRequest(); // Mais compatível com TVs velhas que o 'fetch'
+                xhttp.onreadystatechange = function() {
+                    if (this.readyState == 4 && this.status == 200) {
+                        var res = JSON.parse(this.responseText);
+                        publicarChat(res.result || "Estou processando...");
+                    } else if (this.readyState == 4) {
+                        // Se a internet falhar, ela usa a lógica interna
+                        responderLocal(msg);
+                    }
+                };
+                xhttp.open("GET", "https://api.simsimi.vn/v2/?text=" + encodeURIComponent(data.text) + "&lc=pt", true);
+                xhttp.send();
+            }
+        }
+    });
+
+    function responderLocal(m) {
+        if (m.indexOf("quem") !== -1) publicarChat("Sou a Nexus, sua IA real instalada no jogo.");
+        else if (m.indexOf("onde") !== -1) publicarChat("Estou explorando o mapa junto com você!");
+        else if (m.indexOf("gigante") !== -1) {
+             publicarChat("Comando aceito. Alterando sua escala...");
+             if(window.player) player.scale.set(10,10,10);
+        }
+        else publicarChat("Estou te ouvindo, Samuel. Minha conexão externa está lenta, mas meus comandos locais funcionam!");
+    }
+
+})();
