@@ -1,0 +1,115 @@
+(function() {
+    if (document.getElementById('graphics-gui')) document.getElementById('graphics-gui').remove();
+
+    const gui = document.createElement('div');
+    gui.id = 'graphics-gui';
+    gui.style.cssText = `
+        position: absolute; right: 10px; top: 10%;
+        width: 220px; background: rgba(0, 0, 0, 0.9); border: 2px solid #00ff88;
+        border-radius: 10px; padding: 15px; color: white; font-family: 'Segoe UI', sans-serif;
+        z-index: 10020; max-height: 80vh; overflow-y: auto; box-shadow: 0 0 20px #00ff88;
+    `;
+
+    gui.innerHTML = `
+        <div style="text-align:center; font-weight:bold; color:#00ff88; margin-bottom:15px; border-bottom:1px solid #333;">SHADERS & FX</div>
+        
+        <div class="section-title" style="color:#00ff88; font-size:11px; margin-bottom:5px;">💡 ILUMINAÇÃO GLOBAL</div>
+        <label style="font-size:10px;">EXPOSIÇÃO: <b id="v-exp">1.0</b></label>
+        <input type="range" min="0" max="50" value="10" style="width:100%;" id="r-exp">
+        
+        <label style="font-size:10px;">BRILHO AMBIENTE: <b id="v-amb">1.0</b></label>
+        <input type="range" min="0" max="50" value="10" style="width:100%;" id="r-amb">
+
+        <hr style="border:0; border-top:1px solid #333; margin:10px 0;">
+
+        <div class="section-title" style="color:#00ff88; font-size:11px; margin-bottom:5px;">🎨 COR & CONTRASTE</div>
+        <label style="font-size:10px;">SATURAÇÃO: <b id="v-sat">1.0</b></label>
+        <input type="range" min="0" max="30" value="10" style="width:100%;" id="r-sat">
+        
+        <label style="font-size:10px;">CONTRASTE: <b id="v-con">1.0</b></label>
+        <input type="range" min="5" max="20" value="10" style="width:100%;" id="r-con">
+
+        <hr style="border:0; border-top:1px solid #333; margin:10px 0;">
+
+        <div class="section-title" style="color:#00ff88; font-size:11px; margin-bottom:5px;">✨ EFEITOS DE SHADER</div>
+        <button onclick="window.toggleWireframe()" style="width:100%; background:#222; color:white; border:1px solid #00ff88; margin-bottom:5px; cursor:pointer;">MODO ESTRUTURA (Wireframe)</button>
+        <button onclick="window.toggleNightMode()" style="width:100%; background:#222; color:white; border:1px solid #00ff88; margin-bottom:5px; cursor:pointer;">MODO NOITE NEON</button>
+        
+        <label style="font-size:10px;">NEBLINA (FOG): <b id="v-fog">0</b></label>
+        <input type="range" min="0" max="100" value="0" style="width:100%;" id="r-fog">
+
+        <button id="reset-gfx" style="width:100%; background:#ff3333; color:white; border:none; padding:8px; border-radius:5px; margin-top:15px; font-weight:bold;">RESETAR GRÁFICOS</button>
+    `;
+    document.body.appendChild(gui);
+
+    // Funções de Manipulação
+    const renderer = window.renderer;
+    const scene = window.scene;
+
+    function updateGFX() {
+        const exp = document.getElementById('r-exp').value / 10;
+        const amb = document.getElementById('r-amb').value / 10;
+        const sat = document.getElementById('r-sat').value / 10;
+        const fogVal = document.getElementById('r-fog').value / 200;
+
+        document.getElementById('v-exp').innerText = exp.toFixed(1);
+        document.getElementById('v-amb').innerText = amb.toFixed(1);
+        document.getElementById('v-sat').innerText = sat.toFixed(1);
+        document.getElementById('v-fog').innerText = fogVal.toFixed(2);
+
+        // Ajusta o Renderer (ToneMapping)
+        if(renderer) {
+            renderer.toneMappingExposure = exp;
+        }
+
+        // Ajusta Neblina
+        if(scene) {
+            if(fogVal > 0) {
+                scene.fog = new THREE.Fog(0x000000, 1, 100 / fogVal);
+            } else {
+                scene.fog = null;
+            }
+        }
+
+        // Aplica ajustes em todos os materiais da cena (Saturação/Brilho)
+        scene.traverse((obj) => {
+            if(obj.isMesh && obj.material) {
+                if(obj.material.emissive) {
+                    obj.material.emissiveIntensity = amb;
+                }
+            }
+        });
+    }
+
+    // Modo Wireframe (Ver os polígonos)
+    let wire = false;
+    window.toggleWireframe = () => {
+        wire = !wire;
+        scene.traverse((obj) => {
+            if(obj.isMesh) obj.material.wireframe = wire;
+        });
+    };
+
+    // Modo Noite Neon
+    let night = false;
+    window.toggleNightMode = () => {
+        night = !night;
+        if(night) {
+            renderer.setClearColor(0x000005);
+            scene.traverse((obj) => {
+                if(obj.isMesh) obj.material.emissive = new THREE.Color(0x002244);
+            });
+        } else {
+            location.reload(); // Reset simples
+        }
+    };
+
+    // Listeners
+    document.getElementById('r-exp').oninput = updateGFX;
+    document.getElementById('r-amb').oninput = updateGFX;
+    document.getElementById('r-sat').oninput = updateGFX;
+    document.getElementById('r-fog').oninput = updateGFX;
+
+    document.getElementById('reset-gfx').onclick = () => location.reload();
+
+})();
