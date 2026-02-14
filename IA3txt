@@ -1,0 +1,109 @@
+// Script Mini Chat IA - Canto superior esquerdo
+// Botão "IA" abre/fecha painel com chat
+// Usa Puter.js (IA gratuita ilimitada sem chave)
+// Importe como "ia-chat" no jogo
+
+if (document.getElementById('ia-btn')) document.getElementById('ia-btn').remove();
+if (document.getElementById('ia-panel')) document.getElementById('ia-panel').remove();
+
+// Carrega Puter.js (IA free)
+const puterScript = document.createElement('script');
+puterScript.src = 'https://js.puter.com/v2/';
+puterScript.onload = () => {
+    console.log('Puter.js carregado');
+    alert('IA carregada! Clique no botão "IA" no canto superior esquerdo.');
+    createAIButtonAndPanel();
+};
+puterScript.onerror = () => {
+    console.error('Falha Puter.js');
+    alert('Erro ao carregar IA. Verifique internet ou navegador da TV.');
+};
+document.head.appendChild(puterScript);
+
+function createAIButtonAndPanel() {
+    // Botão flutuante "IA"
+    const btn = document.createElement('button');
+    btn.id = 'ia-btn';
+    btn.innerText = 'IA';
+    btn.style.cssText = `
+        position: absolute; top: 10px; left: 10px; z-index: 1001;
+        background: #00ff00; color: black; border: none; padding: 8px 12px;
+        border-radius: 50%; font-weight: bold; cursor: pointer; box-shadow: 0 0 10px #00ff00;
+    `;
+    btn.onclick = toggleAIPanel;
+    document.body.appendChild(btn);
+
+    // Painel do chat IA
+    const panel = document.createElement('div');
+    panel.id = 'ia-panel';
+    panel.style.cssText = `
+        position: absolute; top: 60px; left: 10px; z-index: 1000; width: 280px; height: 320px;
+        background: rgba(0,0,0,0.9); border: 1px solid #00ff00; border-radius: 10px;
+        padding: 10px; color: white; font-family: sans-serif; display: none; overflow: hidden;
+    `;
+    panel.innerHTML = `
+        <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+            <b style="color:#00ff00;">Chat com IA (Claude/Grok)</b>
+            <button onclick="toggleAIPanel()" style="background:#ff3333; border:none; color:white; padding:2px 8px; cursor:pointer;">X</button>
+        </div>
+        <div id="ia-logs" style="height:220px; overflow-y:auto; font-size:12px; background:#111; padding:8px; border-radius:6px; margin-bottom:8px;"></div>
+        <input id="ia-input" placeholder="Pergunte qualquer coisa..." style="width:75%; padding:6px; font-size:12px;">
+        <button onclick="sendToAI()" style="width:22%; padding:6px; background:#00ff00; border:none; color:black; cursor:pointer;">Enviar</button>
+        <button id="apply-code-btn" onclick="applyAIGeneratedCode()" style="width:100%; margin-top:8px; padding:6px; background:#007bff; border:none; color:white; cursor:pointer; display:none;">Aplicar Script Gerado</button>
+    `;
+    document.body.appendChild(panel);
+
+    let logs = document.getElementById('ia-logs');
+    let input = document.getElementById('ia-input');
+    let applyBtn = document.getElementById('apply-code-btn');
+    let generatedCode = '';
+
+    window.toggleAIPanel = function() {
+        panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+    };
+
+    window.sendToAI = async function() {
+        const msg = input.value.trim();
+        if (!msg) return;
+        addLog('Você: ' + msg);
+        input.value = '';
+
+        try {
+            const response = await puter.ai.chat(msg, { model: 'claude-3.5-sonnet' });
+            addLog('IA: ' + response);
+            if (response.includes('```javascript') || response.includes('<script>')) {
+                generatedCode = extractCode(response);
+                applyBtn.style.display = 'block';
+                addLog('SISTEMA: Código detectado! Clique "Aplicar Script Gerado".');
+            }
+        } catch (e) {
+            addLog('Erro IA: ' + (e.message || 'falha na conexão'));
+        }
+    };
+
+    window.applyAIGeneratedCode = function() {
+        try {
+            eval(generatedCode);
+            addLog('SISTEMA: Script aplicado com sucesso!');
+            applyBtn.style.display = 'none';
+            generatedCode = '';
+        } catch (e) {
+            addLog('Erro ao aplicar: ' + e.message);
+        }
+    };
+
+    function extractCode(text) {
+        const match = text.match(/```javascript\s*([\s\S]*?)\s*```/);
+        return match ? match[1].trim() : text;
+    }
+
+    function addLog(msg) {
+        logs.innerHTML += `<p style="margin:4px 0;">${msg}</p>`;
+        logs.scrollTop = logs.scrollHeight;
+    }
+
+    // Abre o painel por padrão para teste
+    toggleAIPanel();
+}
+
+alert("Script Mini Chat IA carregado! Clique no botão verde 'IA' no canto superior esquerdo. Digite perguntas ou peça scripts.");
