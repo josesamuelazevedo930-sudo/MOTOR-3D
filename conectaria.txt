@@ -1,0 +1,97 @@
+(function() {
+    // 1. VERIFICA SE O MULTIPLAYER JÁ EXISTE (Para não dar erro)
+    if (typeof mqtt === 'undefined') {
+        alert("Ative o Multiplayer primeiro ou aguarde o script carregar!");
+        return;
+    }
+
+    // 2. INTERFACE DA IA (BOTÃO E PAINEL)
+    const aiBtn = document.createElement('button');
+    aiBtn.innerHTML = "🤖 CONECTAR IA";
+    aiBtn.style.cssText = "position:absolute; right:20px; top:300px; width:110px; padding:12px; color:white; border:none; font-weight:bold; border-radius:8px; z-index:1001; background:#00ffff; color:#000; cursor:pointer;";
+    document.body.appendChild(aiBtn);
+
+    const aiStatus = document.createElement('div');
+    aiStatus.style.cssText = "position:fixed; bottom:10px; right:10px; color:#00ffff; font-size:10px; font-family:monospace; z-index:2000;";
+    aiStatus.innerText = "NEXUS AI: STANDBY";
+    document.body.appendChild(aiStatus);
+
+    // 3. CONEXÃO DA IA COM O MULTIPLAYER
+    // A IA terá um "Cérebro" que escuta a sala do MQTT que você está
+    function conectarIAAoJogo(sala, meuNome) {
+        const aiClient = mqtt.connect('wss://broker.emqx.io:8084/mqtt', { clientId: 'AI_NEXUS_' + Math.random().toString(36).substr(2, 5) });
+        const aiNick = "🤖_NEXUS_AI";
+
+        aiClient.on('connect', () => {
+            aiClient.subscribe('siri/multi/' + sala);
+            aiStatus.innerText = "NEXUS AI: CONECTADA NA SALA " + sala;
+            
+            // IA se apresenta no chat do jogo
+            enviarMensagemIA("Olá! Entrei na sala. Sou a IA do jogo e posso te ajudar!");
+        });
+
+        // Função para a IA enviar mensagem e aparecer o balão no boneco dela
+        function enviarMensagemIA(texto) {
+            aiClient.publish('siri/multi/' + sala, JSON.stringify({
+                type: 'chat',
+                id: aiNick,
+                text: texto
+            }));
+        }
+
+        // Função para a IA "existir" visualmente (Sync de posição)
+        setInterval(() => {
+            if (aiClient.connected) {
+                // A IA fica flutuando perto do centro ou pode seguir você
+                aiClient.publish('siri/multi/' + sala, JSON.stringify({
+                    type: 'sync',
+                    id: aiNick,
+                    x: 0, y: 5, z: 0, // Posição fixa inicial
+                    ry: Math.sin(Date.now() * 0.001), // Fica girando
+                    skin: "https://threejs.org/examples/models/gltf/RobotExpressive/RobotExpressive.glb",
+                    anim: "idle"
+                }));
+            }
+        }, 1000);
+
+        // 4. LÓGICA DE PENSAMENTO (IA REAL VIA API)
+        aiClient.on('message', async (topic, msg) => {
+            const data = JSON.parse(msg.toString());
+            
+            // Se alguém falar com a IA no chat (ou citar "IA" ou "Nexus")
+            if (data.type === 'chat' && data.id !== aiNick) {
+                const msgUser = data.text.toLowerCase();
+                
+                if (msgUser.includes("ia") || msgUser.includes("nexus") || msgUser.includes("ajuda")) {
+                    aiStatus.innerText = "NEXUS AI: PENSANDO...";
+                    
+                    try {
+                        // Conexão com a mente da IA (Puter ou SimSimi para velocidade na TV)
+                        const response = await fetch(`https://api.simsimi.vn/v2/?text=${encodeURIComponent(data.text)}&lc=pt`);
+                        const result = await response.json();
+                        
+                        const resposta = result.result || "Estou ouvindo, mas o sinal está fraco!";
+                        
+                        // A IA responde NO CHAT DO JOGO
+                        setTimeout(() => {
+                            enviarMensagemIA(resposta);
+                            aiStatus.innerText = "NEXUS AI: ONLINE";
+                        }, 1000);
+
+                    } catch (e) {
+                        aiStatus.innerText = "NEXUS AI: ERRO DE CONEXÃO";
+                    }
+                }
+            }
+        });
+    }
+
+    aiBtn.onclick = () => {
+        const salaAtual = document.getElementById('mp-room').value || "1";
+        const nickAtual = document.getElementById('mp-name').value || "User";
+        
+        conectarIAAoJogo(salaAtual, nickAtual);
+        aiBtn.style.display = "none"; // Esconde o botão após conectar
+    };
+
+})();
