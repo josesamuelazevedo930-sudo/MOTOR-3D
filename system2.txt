@@ -1,95 +1,77 @@
 (function() {
-    if (document.getElementById('os-root')) document.getElementById('os-root').remove();
+    // Limpeza radical
+    const old = document.getElementById('os-container');
+    if (old) old.remove();
 
-    // Criando a Raiz do Sistema
-    const osRoot = document.createElement('div');
-    osRoot.id = 'os-root';
-    osRoot.style.cssText = "position:fixed; inset:0; pointer-events:none; z-index:999999; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;";
-    document.body.appendChild(osRoot);
+    // 1. ESTRUTURA FIXA (Já nasce no código)
+    const container = document.createElement('div');
+    container.id = 'os-container';
+    container.style.cssText = "position:fixed; inset:0; z-index:999999; pointer-events:none; font-family:sans-serif;";
+    
+    container.innerHTML = `
+        <button id="os-start-btn" style="
+            position:absolute; left:15px; bottom:15px; width:60px; height:60px; 
+            background:#0078d7; border:3px solid white; border-radius:12px; 
+            font-size:30px; color:white; cursor:pointer; pointer-events:auto;
+            box-shadow: 0 0 15px black;
+        ">🪟</button>
 
-    // Botão Iniciar (Toggle)
-    const startBtn = document.createElement('div');
-    startBtn.innerHTML = "🪟";
-    startBtn.style.cssText = "position:fixed; left:10px; bottom:10px; width:50px; height:50px; background:#0078d7; border-radius:50%; display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:25px; pointer-events:auto; box-shadow: 0 0 10px rgba(0,0,0,0.5); z-index:1000001;";
-    osRoot.appendChild(startBtn);
-
-    const desktop = document.createElement('div');
-    desktop.style.cssText = "position:absolute; inset:0; background:rgba(0,0,0,0.4); display:none; pointer-events:auto; backdrop-filter:blur(5px);";
-    osRoot.appendChild(desktop);
-
-    startBtn.onclick = () => {
-        desktop.style.display = desktop.style.display === 'none' ? 'block' : 'none';
-    };
-
-    // Função para criar janelas
-    function createWindow(title, content, width = "400px", height = "300px") {
-        const win = document.createElement('div');
-        win.style.cssText = `position:absolute; left:100px; top:100px; width:${width}; height:${height}; background:#f0f0f0; border:1px solid #000; box-shadow: 5px 5px 15px rgba(0,0,0,0.3); display:flex; flex-direction:column; resize:both; overflow:hidden;`;
-        
-        const head = document.createElement('div');
-        head.style.cssText = "background:#0078d7; color:white; padding:5px 10px; cursor:move; display:flex; justify-content:space-between; align-items:center; font-weight:bold; font-size:12px;";
-        head.innerHTML = `<span>${title}</span><span style='cursor:pointer' onclick="this.parentElement.parentElement.remove()">X</span>`;
-        
-        const body = document.createElement('div');
-        body.style.cssText = "flex:1; padding:10px; overflow:auto; color:black;";
-        body.innerHTML = content;
-
-        win.appendChild(head);
-        win.appendChild(body);
-        desktop.appendChild(win);
-
-        // Tornar arrastável (Básico para TV)
-        let isDown = false; let offset = [0,0];
-        head.onmousedown = (e) => { isDown = true; offset = [win.offsetLeft - e.clientX, win.offsetTop - e.clientY]; };
-        document.onmouseup = () => { isDown = false; };
-        document.onmousemove = (e) => { if (isDown) { win.style.left = (e.clientX + offset[0]) + 'px'; win.style.top = (e.clientY + offset[1]) + 'px'; } };
-    }
-
-    // --- APLICATIVOS DO SISTEMA ---
-
-    // 1. NAVEGADOR (Proxy Browser)
-    window.openBrowser = () => {
-        const browserHTML = `
-            <div style="display:flex; gap:5px; margin-bottom:5px;">
-                <input id="nav-url" type="text" placeholder="https://google.com" style="flex:1; padding:5px;">
-                <button onclick="document.getElementById('nav-frame').src = document.getElementById('nav-url').value">IR</button>
-            </div>
-            <iframe id="nav-frame" src="about:blank" style="width:100%; height:85%; border:1px solid #ccc; background:white;"></iframe>
-        `;
-        createWindow("Navegador Web", browserHTML, "600px", "400px");
-    };
-
-    // 2. EXPLORADOR DE ARQUIVOS (Força Bruta para TV Antiga)
-    window.openExplorer = () => {
-        const explorerHTML = `
-            <div style="font-size:12px;">
-                <p>Tentando acessar: <b>file:///usb/sda1/</b></p>
-                <div id="file-res" style="border:1px inset #fff; height:150px; background:white; padding:5px; overflow:auto;">
-                    <ul id="file-list-os">
-                        <li style="cursor:pointer;color:blue" onclick="alert('Buscando...')">📁 sda1 (USB)</li>
-                        <li style="cursor:pointer;color:blue">📁 Arquivos Internos</li>
-                    </ul>
+        <div id="os-desktop" style="
+            display:none; position:absolute; inset:0; 
+            background:rgba(0, 30, 60, 0.9); pointer-events:auto;
+        ">
+            <div style="padding:20px; display:flex; flex-direction:column; gap:20px;">
+                <div onclick="document.getElementById('win-browser').style.display='block'" style="text-align:center; cursor:pointer; width:80px;">
+                    <div style="font-size:40px;">🌐</div>
+                    <div style="color:white; font-size:12px; font-weight:bold;">INTERNET</div>
                 </div>
-                <input type="file" id="os-file-force" style="margin-top:10px; width:100%;">
-                <button style="margin-top:5px; width:100%;" onclick="document.getElementById('os-file-force').click()">FORÇAR BUSCA NO USB</button>
+                
+                <div onclick="document.getElementById('win-files').style.display='block'" style="text-align:center; cursor:pointer; width:80px;">
+                    <div style="font-size:40px;">📂</div>
+                    <div style="color:white; font-size:12px; font-weight:bold;">USB FILES</div>
+                </div>
             </div>
-        `;
-        createWindow("Meu Computador", explorerHTML);
+
+            <div id="win-browser" style="display:none; position:absolute; left:100px; top:50px; width:80%; height:80%; background:white; border:2px solid #0078d7; box-shadow: 0 0 20px black;">
+                <div style="background:#0078d7; color:white; padding:8px; display:flex; justify-content:space-between; font-weight:bold;">
+                    <span>NAVEGADOR</span>
+                    <button onclick="this.parentElement.parentElement.style.display='none'" style="background:red; color:white; border:none;">X</button>
+                </div>
+                <div style="padding:5px; background:#ddd; display:flex; gap:5px;">
+                    <input id="os-url" type="text" value="https://www.google.com" style="flex:1; padding:5px;">
+                    <button onclick="document.getElementById('os-frame').src = document.getElementById('os-url').value">IR</button>
+                </div>
+                <iframe id="os-frame" src="" style="width:100%; height:calc(100% - 75px); border:none;"></iframe>
+            </div>
+
+            <div id="win-files" style="display:none; position:absolute; left:150px; top:100px; width:400px; height:300px; background:#f0f0f0; border:2px solid #333; box-shadow: 0 0 20px black;">
+                <div style="background:#333; color:white; padding:8px; display:flex; justify-content:space-between;">
+                    <span>EXPLORADOR USB</span>
+                    <button onclick="this.parentElement.parentElement.style.display='none'" style="background:red; color:white; border:none;">X</button>
+                </div>
+                <div style="padding:15px; color:black;">
+                    <p style="font-size:12px;">Selecione o arquivo diretamente do <b>USB (sda1)</b>:</p>
+                    <input type="file" id="os-usb-select" style="width:100%; margin:10px 0;">
+                    <div style="font-size:10px; color:red;">* Se o arquivo não aparecer, tente mudar o formato do pendrive para FAT32.</div>
+                </div>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(container);
+
+    // LÓGICA DE CLIQUE (Simples para TVs Antigas)
+    const btn = document.getElementById('os-start-btn');
+    const dsk = document.getElementById('os-desktop');
+
+    btn.onclick = function() {
+        if (dsk.style.display === 'none') {
+            dsk.style.display = 'block';
+            btn.style.background = '#ff0055'; // Muda cor ao abrir
+        } else {
+            dsk.style.display = 'none';
+            btn.style.background = '#0078d7';
+        }
     };
-
-    // Ícones no Desktop
-    const apps = [
-        { name: "Navegador", icon: "🌐", action: "openBrowser()" },
-        { name: "Arquivos", icon: "📂", action: "openExplorer()" },
-        { name: "Config", icon: "⚙️", action: "alert('Sistema Otimizado')" }
-    ];
-
-    apps.forEach((app, i) => {
-        const icon = document.createElement('div');
-        icon.innerHTML = `<div style="font-size:30px;">${app.icon}</div><div style="font-size:10px; color:white;">${app.name}</div>`;
-        icon.style.cssText = `position:absolute; left:20px; top:${20 + (i * 70)}px; text-align:center; cursor:pointer; width:60px; pointer-events:auto;`;
-        icon.onclick = () => eval(app.action);
-        desktop.appendChild(icon);
-    });
 
 })();
