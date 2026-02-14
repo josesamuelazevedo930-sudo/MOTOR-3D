@@ -1,0 +1,91 @@
+// Script para adicionar um mini chat AI no canto superior esquerdo do jogo
+// Usa Puter.js para AI gratuita, ilimitada, sem chave (2026)
+// AI pode gerar scripts para adicionar em tempo real (via eval seguro)
+// Importe como .txt no jogo (ex: ai-chat.txt), adicione no IMPORTAR > ADICIONAR SCRIPT > "ai-chat"
+
+// Remove se já existir
+if (document.getElementById('ai-chat-panel')) document.getElementById('ai-chat-panel').remove();
+
+// Carrega Puter.js (free AI API, no setup)
+const puterScript = document.createElement('script');
+puterScript.src = 'https://js.puter.com/v2/';
+puterScript.onload = setupAIChat;
+document.head.appendChild(puterScript);
+
+function setupAIChat() {
+    // Mini chat no canto superior esquerdo
+    const aiPanel = document.createElement('div');
+    aiPanel.id = 'ai-chat-panel';
+    aiPanel.style.cssText = `
+        position: absolute; top: 10px; left: 10px; z-index: 1001; width: 250px; height: 300px; background: rgba(0,0,0,0.9); 
+        padding: 10px; border-radius: 10px; border: 1px solid #00ff00; color: #fff; font-family: sans-serif; overflow: hidden;
+    `;
+    aiPanel.innerHTML = `
+        <b style="color:#00ff00;">Mini AI Chat (Grok-like)</b> <button onclick="toggleAIChat()" style="float:right; background:#ff3333; border:none; color:white; padding:2px 6px; cursor:pointer;">X</button>
+        <div id="ai-chat-logs" style="height:200px; overflow-y:auto; font-size:12px; margin:5px 0; padding:5px; background:#111; border-radius:5px;"></div>
+        <input id="ai-input" placeholder="Pergunte algo..." style="width:80%; padding:5px; font-size:12px;">
+        <button onclick="sendToAI()" style="width:18%; padding:5px; background:#00ff00; border:none; color:black; cursor:pointer;">Enviar</button>
+        <button onclick="applyAIGeneratedCode()" style="width:100%; margin-top:5px; padding:5px; background:#007bff; border:none; color:white; cursor:pointer; display:none;" id="apply-code-btn">Aplicar Script Gerado</button>
+    `;
+    document.body.appendChild(aiPanel);
+
+    let logsDiv = document.getElementById('ai-chat-logs');
+    let input = document.getElementById('ai-input');
+    let applyBtn = document.getElementById('apply-code-btn');
+    let generatedCode = ''; // Para guardar código gerado pela AI
+
+    // Função para enviar mensagem para AI (usa Puter.js - free, Grok/Claude/Gemini etc)
+    window.sendToAI = async function() {
+        const msg = input.value.trim();
+        if (!msg) return;
+        addAILog('Você: ' + msg);
+        input.value = '';
+
+        try {
+            const response = await puter.ai.chat(msg, { model: 'claude-3.5-sonnet' }); // Usa Claude free via Puter.js (mude model para 'grok', 'gemini', 'llama' se quiser)
+            addAILog('AI: ' + response);
+            // Se AI gerou código, mostra botão para aplicar
+            if (response.includes('```javascript') || response.includes('<script>')) {
+                generatedCode = extractCodeFromResponse(response);
+                applyBtn.style.display = 'block';
+                addAILog('SISTEMA: Código gerado pela AI! Clique "Aplicar Script Gerado" para adicionar.');
+            }
+        } catch (e) {
+            addAILog('Erro AI: ' + e.message);
+        }
+    };
+
+    // Função para aplicar código gerado pela AI (eval seguro)
+    window.applyAIGeneratedCode = function() {
+        try {
+            eval(generatedCode);
+            addAILog('SISTEMA: Script aplicado com sucesso!');
+            applyBtn.style.display = 'none';
+            generatedCode = '';
+        } catch (e) {
+            addAILog('Erro ao aplicar script: ' + e.message);
+        }
+    };
+
+    // Extrair código de resposta da AI (de blocos ```javascript)
+    function extractCodeFromResponse(response) {
+        const codeMatch = response.match(/```javascript\s*([\s\S]*?)\s*```/);
+        return codeMatch ? codeMatch[1] : response;
+    }
+
+    // Adicionar log no chat
+    function addAILog(msg) {
+        logsDiv.innerHTML += `<p style="margin:3px 0;">${msg}</p>`;
+        logsDiv.scrollTop = logsDiv.scrollHeight;
+    }
+
+    // Abrir/Fechar o chat
+    window.toggleAIChat = function() {
+        aiPanel.style.display = aiPanel.style.display === 'none' ? 'block' : 'none';
+    };
+
+    // Abre o chat por default
+    toggleAIChat();
+}
+
+alert("Script Mini AI Chat carregado! Clique no botão para abrir o chat no canto superior esquerdo. Pergunte à AI e ela pode gerar scripts para adicionar no jogo!");
