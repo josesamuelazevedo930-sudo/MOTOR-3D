@@ -1,0 +1,80 @@
+(function() {
+    if (document.getElementById('skin-gui')) document.getElementById('skin-gui').remove();
+
+    // Estilos do Menu
+    const gui = document.createElement('div');
+    gui.id = 'skin-gui';
+    gui.style.cssText = `
+        position: absolute; left: 10px; top: 50%; transform: translateY(-50%);
+        width: 160px; background: rgba(0, 0, 0, 0.9); border: 2px solid #ff00ff;
+        border-radius: 10px; padding: 10px; color: white; font-family: sans-serif;
+        z-index: 10006; display: none; box-shadow: 0 0 15px #ff00ff;
+    `;
+
+    // Botão de Ligar/Desligar (GUI ON/OFF)
+    const toggleBtn = document.createElement('button');
+    toggleBtn.innerHTML = "🎨 SKIN";
+    toggleBtn.style.cssText = "position:absolute; left:10px; top:240px; width:60px; height:40px; background:#ff00ff; color:white; border:none; border-radius:8px; font-weight:bold; cursor:pointer; z-index:10007; font-size:10px;";
+    toggleBtn.onclick = () => {
+        gui.style.display = gui.style.display === 'none' ? 'block' : 'none';
+        toggleBtn.style.background = gui.style.display === 'none' ? '#ff00ff' : '#00ffff';
+    };
+    document.body.appendChild(toggleBtn);
+
+    gui.innerHTML = `
+        <div style="text-align:center; font-weight:bold; color:#ff00ff; margin-bottom:10px; font-size:12px;">EDITOR DE SKIN</div>
+        
+        <label style="font-size:10px;">TAMANHO: <span id="val-size">1.0</span></label>
+        <input type="range" min="1" max="50" value="10" style="width:100%; margin-bottom:10px;" id="range-size">
+        
+        <label style="font-size:10px;">COR (RGB):</label>
+        <input type="color" id="skin-color" value="#ffffff" style="width:100%; height:30px; border:none; background:none; margin-bottom:10px;">
+        
+        <label style="font-size:10px;">TRANSPARÊNCIA:</label>
+        <input type="range" min="1" max="10" value="10" style="width:100%; margin-bottom:10px;" id="range-alpha">
+
+        <button id="reset-skin" style="width:100%; background:#444; color:white; border:none; padding:5px; border-radius:4px; font-size:10px;">RESETAR</button>
+    `;
+    document.body.appendChild(gui);
+
+    // Lógica de Aplicação
+    function aplicarMudanças() {
+        if (!player) return;
+
+        const size = document.getElementById('range-size').value / 10;
+        const color = document.getElementById('skin-color').value;
+        const alpha = document.getElementById('range-alpha').value / 10;
+
+        document.getElementById('val-size').innerText = size.toFixed(1);
+
+        // Altera o tamanho do player
+        player.scale.set(size, size, size);
+
+        // Altera a cor e transparência de todos os materiais da skin
+        player.traverse((child) => {
+            if (child.isMesh) {
+                child.material.color.set(color);
+                child.material.transparent = true;
+                child.material.opacity = alpha;
+            }
+        });
+    }
+
+    // Eventos
+    document.getElementById('range-size').oninput = aplicarMudanças;
+    document.getElementById('skin-color').oninput = aplicarMudanças;
+    document.getElementById('range-alpha').oninput = aplicarMudanças;
+
+    document.getElementById('reset-skin').onclick = () => {
+        document.getElementById('range-size').value = 10;
+        document.getElementById('skin-color').value = "#ffffff";
+        document.getElementById('range-alpha').value = 10;
+        aplicarMudanças();
+    };
+
+    // Auto-update para garantir que a skin não resete sozinha
+    setInterval(() => {
+        if(gui.style.display === 'block') aplicarMudanças();
+    }, 1000);
+
+})();
