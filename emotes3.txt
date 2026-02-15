@@ -1,0 +1,59 @@
+(function() {
+    // 1. Limpeza de segurança
+    var antigo = document.getElementById('nexus-menu');
+    if (antigo) { antigo.remove(); }
+
+    // 2. Criar Interface (HTML Simples)
+    var html = '<div id="nexus-menu" style="display:none; position:fixed; top:50%; left:50%; width:260px; height:260px; margin-left:-130px; margin-top:-130px; border-radius:50%; background:rgba(0,0,0,0.8); border:3px solid #00ffff; z-index:10000; color:#00ffff; font-family:sans-serif; text-align:center;">' +
+        '<div onclick="tocar(0)" style="position:absolute; top:10px; left:80px; cursor:pointer; background:#00ffff; color:#000; padding:5px; border-radius:5px;">DANÇAR</div>' +
+        '<div onclick="tocar(1)" style="position:absolute; bottom:10px; left:80px; cursor:pointer; background:#00ffff; color:#000; padding:5px; border-radius:5px;">TCHAU</div>' +
+        '<div onclick="tocar(2)" style="position:absolute; left:10px; top:110px; cursor:pointer; background:#00ffff; color:#000; padding:5px; border-radius:5px;">POSE</div>' +
+        '<div onclick="tocar(3)" style="position:absolute; right:10px; top:110px; cursor:pointer; background:#00ffff; color:#000; padding:5px; border-radius:5px;">RIR</div>' +
+        '<div style="margin-top:115px; font-weight:bold; font-size:12px;">NEXUS MENU<br>[E] ABRIR</div>' +
+    '</div>';
+    
+    document.body.insertAdjacentHTML('beforeend', html);
+    var menu = document.getElementById('nexus-menu');
+
+    // 3. Controle do Menu (Tecla E)
+    window.onkeydown = function(event) {
+        if (event.key.toLowerCase() === 'e') {
+            menu.style.display = (menu.style.display === 'none') ? 'block' : 'none';
+        }
+    };
+
+    // 4. Lógica de Animação (Injeção de Mixer)
+    window.tocar = function(id) {
+        // Tenta encontrar o player automaticamente se não estiver definido
+        var p = window.player || (window.scene ? window.scene.getObjectByName('player') : null);
+        
+        if (!p) {
+            alert("Erro: Player não encontrado no mapa!");
+            return;
+        }
+
+        if (!window.nexusMixer) {
+            window.nexusMixer = new THREE.AnimationMixer(p);
+        }
+
+        if (p.animations && p.animations[id]) {
+            window.nexusMixer.stopAllAction();
+            var action = window.nexusMixer.clipAction(p.animations[id]);
+            action.play();
+        } else {
+            console.log("NEXUS: Este modelo não tem a animação " + id);
+        }
+        menu.style.display = 'none';
+    };
+
+    // 5. Loop de Vida (Essencial para o movimento)
+    var relogio = new THREE.Clock();
+    function renderizar() {
+        requestAnimationFrame(renderizar);
+        if (window.nexusMixer) {
+            window.nexusMixer.update(relogio.getDelta());
+        }
+    }
+    renderizar();
+
+})();
