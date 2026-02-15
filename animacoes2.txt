@@ -1,0 +1,84 @@
+(function() {
+    var pontos = { cabeca: null, tronco: null, pernaE: null, pernaD: null };
+    var etapa = 0;
+    var ordens = ["CLIQUE NA CABEÇA", "CLIQUE NO TRONCO", "CLIQUE NA PERNA ESQUERDA", "CLIQUE NA PERNA DIREITA"];
+
+    // 1. Interface de Instrução Blindada
+    var guia = document.getElementById('nx-rig-gui');
+    if (guia) guia.parentNode.removeChild(guia);
+
+    guia = document.createElement('div');
+    guia.id = 'nx-rig-gui';
+    guia.style = 'position:fixed; top:10px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,0.9); border:2px solid #00ffff; color:#00ffff; padding:20px; border-radius:10px; z-index:99999; font-family:sans-serif; text-align:center; font-weight:bold; box-shadow:0 0 20px #000;';
+    guia.innerHTML = '<span id="nx-msg">INICIANDO: ' + ordens[0] + '</span>';
+    document.body.appendChild(guia);
+
+    // 2. Sistema de Clique Global
+    window.addEventListener('mousedown', function(event) {
+        if (etapa >= 4) return;
+
+        var mouse = new THREE.Vector2();
+        mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+        mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+        var ray = new THREE.Raycaster();
+        ray.setFromCamera(mouse, camera);
+        
+        // Verifica interseção com o player e todos os seus filhos
+        var intersects = ray.intersectObject(player, true);
+
+        if (intersects.length > 0) {
+            var alvo = intersects[0].object;
+            
+            // Feedback Visual: Piscar em vermelho
+            var corOriginal = alvo.material.color ? alvo.material.color.getHex() : 0xffffff;
+            if (alvo.material.color) alvo.material.color.setHex(0xff0000);
+            
+            setTimeout(function() {
+                if (alvo.material.color) alvo.material.color.setHex(corOriginal);
+            }, 500);
+
+            // Guardar o ponto
+            if (etapa === 0) pontos.cabeca = alvo;
+            if (etapa === 1) pontos.tronco = alvo;
+            if (etapa === 2) pontos.pernaE = alvo;
+            if (etapa === 3) pontos.pernaD = alvo;
+
+            console.log("NEXUS: Parte configurada -> " + alvo.name);
+            etapa++;
+
+            if (etapa < 4) {
+                document.getElementById('nx-msg').innerText = "PRÓXIMO: " + ordens[etapa];
+            } else {
+                document.getElementById('nx-msg').innerText = "✅ CONFIGURADO! INJETANDO MOVIMENTO...";
+                setTimeout(function() { guia.style.display = 'none'; }, 2000);
+                iniciarMarcha();
+            }
+        }
+    });
+
+    // 3. Motor de Marcha (Andar de verdade com as partes escolhidas)
+    function iniciarMarcha() {
+        var clock = new THREE.Clock();
+        function animar() {
+            requestAnimationFrame(animar);
+            var t = Date.now() * 0.005; // Tempo para o movimento
+
+            // Movimento real de caminhada (Sincronizado)
+            if (pontos.pernaE) {
+                pontos.pernaE.rotation.x = Math.sin(t) * 0.6; // Perna E para frente/trás
+            }
+            if (pontos.pernaD) {
+                pontos.pernaD.rotation.x = Math.sin(t + Math.PI) * 0.6; // Perna D invertida
+            }
+            if (pontos.tronco) {
+                // Balanço natural do corpo e braços (se o tronco for o pai dos braços)
+                pontos.tronco.position.y = 0.1 + Math.sin(t * 2) * 0.05; 
+            }
+            if (pontos.cabeca) {
+                pontos.cabeca.rotation.z = Math.sin(t) * 0.05; // Cabeça balança levemente
+            }
+        }
+        animar();
+    }
+})();
