@@ -1,0 +1,71 @@
+(function() {
+    var pontos = { cabeca: null, tronco: null, pernaE: null, pernaD: null };
+    var etapa = 0;
+    var ordens = ["CLIQUE NA CABEÇA", "CLIQUE NO TRONCO", "CLIQUE NA PERNA ESQUERDA", "CLIQUE NA PERNA DIREITA"];
+
+    // 1. Criar Interface de Instrução
+    var guia = document.createElement('div');
+    guia.id = 'nexus-rig-gui';
+    guia.style = 'position:fixed; top:20px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,0.9); border:2px solid #ff00ff; color:#fff; padding:15px; border-radius:10px; z-index:10001; font-family:monospace; text-align:center;';
+    guia.innerHTML = '<b id="nx-msg">MODO RIGGING: ' + ordens[0] + '</b><br><small>Clique no modelo para definir os membros</small>';
+    document.body.appendChild(guia);
+
+    // 2. Sistema de Raycaster (Captura o Clique no 3D)
+    var raycaster = new THREE.Raycaster();
+    var mouse = new THREE.Vector2();
+
+    window.onclick = function(event) {
+        if (etapa >= 4) return;
+
+        mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+        mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+        raycaster.setFromCamera(mouse, camera);
+        var intersects = raycaster.intersectObject(player, true);
+
+        if (intersects.length > 0) {
+            var objetoClicado = intersects[0].object;
+            
+            if (etapa === 0) pontos.cabeca = objetoClicado;
+            if (etapa === 1) pontos.tronco = objetoClicado;
+            if (etapa === 2) pontos.pernaE = objetoClicado;
+            if (etapa === 3) pontos.pernaD = objetoClicado;
+
+            console.log("NEXUS: " + ordens[etapa] + " CONFIGURADO!");
+            etapa++;
+
+            if (etapa < 4) {
+                document.getElementById('nx-msg').innerText = "MODO RIGGING: " + ordens[etapa];
+            } else {
+                document.getElementById('nx-msg').innerText = "✅ CALIBRAÇÃO CONCLUÍDA!";
+                setTimeout(function() { guia.style.display = 'none'; }, 2000);
+                ativarMarchaReal();
+            }
+        }
+    };
+
+    // 3. O Motor de Animação Real (Pós-Calibração)
+    var tempo = 0;
+    function ativarMarchaReal() {
+        function loop() {
+            requestAnimationFrame(loop);
+            tempo += 0.15;
+
+            // Agora movemos as peças que VOCÊ escolheu:
+            if (pontos.pernaE) {
+                pontos.pernaE.rotation.x = Math.sin(tempo) * 0.5; // Perna indo pra frente
+            }
+            if (pontos.pernaD) {
+                pontos.pernaD.rotation.x = -Math.sin(tempo) * 0.5; // Outra perna indo pra trás
+            }
+            if (pontos.tronco) {
+                pontos.tronco.rotation.z = Math.sin(tempo) * 0.05; // Balanço do corpo
+            }
+            if (pontos.cabeca) {
+                pontos.cabeca.rotation.y = Math.sin(tempo * 0.5) * 0.2; // Olhando pros lados
+            }
+        }
+        loop();
+        alert("SISTEMA: Animações Reais injetadas com base na sua configuração!");
+    }
+})();
