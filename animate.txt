@@ -1,0 +1,58 @@
+(function() {
+    // 1. Criar o Menu Visual (CSS puro para evitar erros)
+    var menuId = 'nexus-circular-menu';
+    if (document.getElementById(menuId)) document.getElementById(menuId).remove();
+
+    var style = document.createElement('style');
+    style.innerHTML = `
+        #nexus-menu { position:fixed; top:50%; left:50%; transform:translate(-50%, -50%); width:240px; height:240px; z-index:9999; display:none; }
+        .emote-option { position:absolute; width:70px; height:70px; background:rgba(0,255,255,0.8); border:3px solid #fff; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:bold; color:#000; cursor:pointer; transition:0.2s; }
+        .emote-option:hover { background:#fff; transform:scale(1.1); }
+    `;
+    document.head.appendChild(style);
+
+    var menu = document.createElement('div');
+    menu.id = 'nexus-menu';
+    menu.innerHTML = `
+        <div class="emote-option" style="top:0; left:85px;" onclick="nexusAnimate(0)">DANÇAR</div>
+        <div class="emote-option" style="bottom:0; left:85px;" onclick="nexusAnimate(1)">ACENAR</div>
+        <div class="emote-option" style="left:0; top:85px;" onclick="nexusAnimate(2)">CORRER</div>
+        <div class="emote-option" style="right:0; top:85px;" onclick="nexusAnimate(3)">PULAR</div>
+        <div style="position:absolute; top:105px; left:75px; color:#fff; text-shadow:2px 2px #000;">NEXUS</div>
+    `;
+    document.body.appendChild(menu);
+
+    // 2. Tecla 'E' para abrir
+    window.addEventListener('keydown', function(e) {
+        if (e.key.toLowerCase() === 'e') {
+            menu.style.display = (menu.style.display === 'flex' || menu.style.display === 'block') ? 'none' : 'block';
+        }
+    });
+
+    // 3. Função de Injeção de Animação
+    window.nexusAnimate = function(id) {
+        if (!window.player) return alert("Nexus: Carregue um personagem primeiro!");
+
+        // Se o modelo não tem animações (T-Pose), vamos injetar uma básica
+        if (!window.player.animations || window.player.animations.length === 0) {
+            console.log("Nexus: Injetando DNA de movimento no modelo estático...");
+            
+            // Criamos uma animação simples de "Respiração" via código (Injeção Neural)
+            var times = [0, 1, 2], values = [1, 1.1, 1];
+            var track = new THREE.NumberKeyframeTrack('.scale[y]', times, values);
+            var clip = new THREE.AnimationClip('Idle_Injected', 2, [track]);
+            
+            window.player.animations = [clip];
+        }
+
+        if (window.mixer) {
+            var action = window.mixer.clipAction(window.player.animations[0] || window.player.animations[id]);
+            window.mixer.stopAllAction();
+            action.play();
+        }
+        
+        menu.style.display = 'none';
+    };
+
+    console.log("🧠 NEXUS: Sistema de Emotes injetado! Aperte 'E' para abrir.");
+})();
