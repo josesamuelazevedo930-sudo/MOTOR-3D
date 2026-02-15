@@ -1,0 +1,59 @@
+(function() {
+    // 1. Interface GUI Profissional
+    var gui = document.createElement('div');
+    gui.innerHTML = `
+        <div id="nx-gui" style="position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,0.85); border:2px solid #00ffff; border-radius:15px; padding:10px; z-index:10000; display:flex; gap:10px; box-shadow:0 0 20px #00ffff;">
+            <button onclick="nxEmote('walk')" style="background:#222; color:#0ff; border:1px solid #0ff; padding:10px; border-radius:8px; cursor:pointer; font-weight:bold;">👣 ANDAR</button>
+            <button onclick="nxEmote('dance')" style="background:#222; color:#0ff; border:1px solid #0ff; padding:10px; border-radius:8px; cursor:pointer; font-weight:bold;">🕺 DANÇAR</button>
+            <button onclick="nxEmote('wave')" style="background:#222; color:#0ff; border:1px solid #0ff; padding:10px; border-radius:8px; cursor:pointer; font-weight:bold;">👋 ACENAR</button>
+        </div>
+    `;
+    document.body.appendChild(gui);
+
+    // 2. O Segredo: O Injetor de Esqueleto (Rigging Neural)
+    window.nxEmote = function(tipo) {
+        if (!window.player) return alert("Erro: Player não detectado!");
+
+        // Garantir que o mixer existe
+        if (!window.mixer) {
+            window.mixer = new THREE.AnimationMixer(window.player);
+        }
+
+        var tracks = [];
+        
+        if (tipo === 'dance') {
+            // Animação de Quadril e Braços (Simulada por Keyframes Reais)
+            tracks.push(new THREE.VectorKeyframeTrack('.rotation', [0, 0.5, 1], [0,0,0, 0,0.2,0, 0,0,0])); // Rebolar
+            tracks.push(new THREE.VectorKeyframeTrack('.position', [0, 0.2, 0.4, 0.6, 0.8, 1], [0,0,0, 0,1,0, 0,0,0, 0,1,0, 0,0,0])); // Pulo rítmico
+        } 
+        
+        if (tipo === 'walk') {
+            // Simulação de passada (Balanço de inclinação)
+            tracks.push(new THREE.VectorKeyframeTrack('.rotation', [0, 0.25, 0.5, 0.75, 1], [0,0,0.1, 0,0,-0.1, 0,0,0.1, 0,0,-0.1, 0,0,0]));
+        }
+
+        if (tipo === 'wave') {
+            // Tenta mover o osso do braço direito (se o modelo tiver esqueleto padrão)
+            tracks.push(new THREE.VectorKeyframeTrack('*.bones[RightArm].rotation', [0, 0.5, 1], [0,0,0, 0,0,1.5, 0,0,0]));
+        }
+
+        var clip = new THREE.AnimationClip(tipo, 1, tracks);
+        var action = window.mixer.clipAction(clip);
+        
+        window.mixer.stopAllAction();
+        action.reset().play();
+        
+        console.log("NEXUS: Injetando emote real: " + tipo);
+    };
+
+    // 3. Forçar o Motor a processar a animação a cada frame
+    if (!window.nxLoopStarted) {
+        var clock = new THREE.Clock();
+        function nxAnimate() {
+            requestAnimationFrame(nxAnimate);
+            if (window.mixer) window.mixer.update(clock.getDelta());
+        }
+        nxAnimate();
+        window.nxLoopStarted = true;
+    }
+})();
