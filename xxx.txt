@@ -1,0 +1,34 @@
+// LEITOR DO WEBHOOK PARA O JOGO
+(function() {
+    const webhookToken = "71d2e76f-e573-4d6c-857a-34834a41791c";
+    const remotePlayers = {};
+    const scene = window.scene;
+
+    async function atualizarDoRoblox() {
+        try {
+            // Pega a última requisição feita para o seu webhook
+            const res = await fetch(`https://webhook.site/token/${webhookToken}/requests?sorting=newest`);
+            const json = await res.json();
+            
+            if (json.data && json.data.length > 0) {
+                const data = JSON.parse(json.data[0].content);
+                
+                if (!remotePlayers[data.id]) {
+                    console.log("Detectado no Webhook: " + data.id);
+                    // Criando um Cubo Simples para provar a conexão
+                    const g = new THREE.Mesh(
+                        new THREE.BoxGeometry(2, 5, 2),
+                        new THREE.MeshBasicMaterial({color: 0xff00ff, wireframe: true})
+                    );
+                    scene.add(g);
+                    remotePlayers[data.id] = g;
+                }
+                
+                const p = remotePlayers[data.id];
+                p.position.set(data.x, data.y, data.z);
+            }
+        } catch(e) { console.log("Erro na leitura da ponte"); }
+    }
+
+    setInterval(atualizarDoRoblox, 2000); // Checa a cada 2 segundos (limite do site)
+})();
