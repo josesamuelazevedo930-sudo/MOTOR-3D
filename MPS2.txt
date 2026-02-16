@@ -1,0 +1,50 @@
+(function() {
+    // Remove painel antigo se existir
+    if(document.getElementById('nexus-simple-box')) document.getElementById('nexus-simple-box').remove();
+
+    // Criar interface simples
+    const div = document.createElement('div');
+    div.id = 'nexus-simple-box';
+    div.style.cssText = "position:absolute; top:10px; left:10px; width:220px; background:rgba(0,0,0,0.8); border:2px solid #28a745; padding:10px; z-index:10000; border-radius:8px; color:white; font-family:sans-serif;";
+    div.innerHTML = `
+        <div style="font-weight:bold; margin-bottom:5px; font-size:12px; color:#28a745;">IMPORTADOR DIRETO</div>
+        <textarea id="raw-map-code" placeholder="Cole o código aqui..." style="width:100%; height:80px; background:#111; color:#fff; border:1px solid #444; font-size:10px; margin-bottom:5px;"></textarea>
+        <button id="btn-spawn-now" style="width:100%; padding:8px; background:#28a745; border:none; color:white; font-weight:bold; cursor:pointer;">CONSTRUIR AGORA</button>
+    `;
+    document.body.appendChild(div);
+
+    // Função de Construção
+    document.getElementById('btn-spawn-now').onclick = function() {
+        const raw = document.getElementById('raw-map-code').value.trim();
+        if(!raw) return alert("Cole o código primeiro!");
+
+        try {
+            const blocos = JSON.parse(raw);
+            // 'scene' é a variável global que você já tem no seu script do HTML
+            const jScene = window.scene;
+
+            if(!jScene) {
+                alert("Erro: Cena do jogo não encontrada!");
+                return;
+            }
+
+            let count = 0;
+            blocos.forEach(b => {
+                // p: posição, s: tamanho, c: cor (vêm do script do Roblox V18)
+                const geo = new THREE.BoxGeometry(b.s[0], b.s[1], b.s[2]);
+                const mat = new THREE.MeshStandardMaterial({ color: "#" + b.c });
+                const mesh = new THREE.Mesh(geo, mat);
+                
+                mesh.position.set(b.p[0], b.p[1], b.p[2]);
+                jScene.add(mesh);
+                count++;
+            });
+
+            alert(count + " blocos carregados!");
+            document.getElementById('raw-map-code').value = ""; // Limpa após carregar
+        } catch(e) {
+            alert("Erro no código! Certifique-se de que copiou o código completo do Roblox.");
+            console.error(e);
+        }
+    };
+})();
