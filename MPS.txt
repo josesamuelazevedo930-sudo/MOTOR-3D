@@ -1,0 +1,68 @@
+// NEXUS INTEGRATOR V18
+(function() {
+    // 1. Adicionar o Campo de Texto no Painel de Importação
+    const iPanel = document.getElementById('i-panel');
+    const container = document.createElement('div');
+    container.innerHTML = `
+        <hr style="border:0; border-top:1px solid #444; margin:10px 0;">
+        <p style="font-size:12px; margin-top:0; color:#0f0;">IMPORTAR DO ROBLOX (JSON):</p>
+        <input type="text" id="rblx-map-name" placeholder="Nome do Mapa">
+        <textarea id="rblx-map-data" placeholder="Cole o código aqui..." style="width:90%; height:50px; background:#222; color:#fff; border-radius:6px; border:none; margin-bottom:10px; font-size:10px;"></textarea>
+        <button id="btn-save-rblx" class="opt" style="background:#8000ff;">💾 SALVAR MAPA NA LISTA</button>
+    `;
+    iPanel.appendChild(container);
+
+    // 2. Função para reconstruir o mapa na cena do jogo
+    window.construirMapaRoblox = function(mapaData) {
+        try {
+            const blocos = JSON.parse(mapaData);
+            const jScene = window.scene; // Pega a cena do seu script original
+            
+            // Criar um grupo para o novo mapa
+            const novoMapa = new THREE.Group();
+            
+            blocos.forEach(b => {
+                const geo = new THREE.BoxGeometry(b.s[0], b.s[1], b.s[2]);
+                const mat = new THREE.MeshStandardMaterial({ color: "#" + b.c });
+                const mesh = new THREE.Mesh(geo, mat);
+                mesh.position.set(b.p[0], b.p[1], b.p[2]);
+                novoMapa.add(mesh);
+            });
+            
+            jScene.add(novoMapa);
+            alert("Mapa construído com sucesso!");
+        } catch(e) { alert("Erro ao carregar mapa: " + e); }
+    };
+
+    // 3. Lógica para salvar na lista original do seu jogo
+    document.getElementById('btn-save-rblx').onclick = function() {
+        const nome = document.getElementById('rblx-map-name').value.trim() || "Mapa Roblox";
+        const codigo = document.getElementById('rblx-map-data').value.trim();
+
+        if(!codigo) return alert("Cole o código primeiro!");
+
+        // Salva nos customMaps (mesma chave que o seu jogo já usa)
+        let saved = JSON.parse(localStorage.getItem('customMaps') || "[]");
+        saved.push({ n: "🧱 " + nome, u: "INTERNAL_JSON", data: codigo });
+        localStorage.setItem('customMaps', JSON.stringify(saved));
+
+        // Limpa campos e atualiza a lista na tela
+        document.getElementById('rblx-map-name').value = "";
+        document.getElementById('rblx-map-data').value = "";
+        
+        if(window.renderCustomAssets) window.renderCustomAssets();
+        alert("Mapa salvo na aba 'MEUS MAPAS'!");
+    };
+
+    // 4. Corrigir a função renderCustomAssets original para entender o JSON interno
+    // Vamos "hackear" a função de clique da sua lista
+    const originalCreateRow = window.createRow;
+    window.createRow = function(container, item, index, key, action) {
+        if(item.u === "INTERNAL_JSON") {
+            const customAction = () => window.construirMapaRoblox(item.data);
+            originalCreateRow(container, item, index, key, customAction);
+        } else {
+            originalCreateRow(container, item, index, key, action);
+        }
+    };
+})();
