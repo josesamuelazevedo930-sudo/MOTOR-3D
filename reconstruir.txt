@@ -1,0 +1,52 @@
+(function() {
+    // UI Atualizada
+    if(document.getElementById('nexus-importer')) document.getElementById('nexus-importer').remove();
+    const panel = document.createElement('div');
+    panel.id = 'nexus-importer';
+    panel.style.cssText = "position:absolute; top:10px; right:10px; width:280px; background:rgba(0,0,0,0.9); border:2px solid #ff00ff; padding:15px; color:#fff; z-index:10000; font-family:monospace; border-radius:10px;";
+    panel.innerHTML = `
+        <b style="color:#ff00ff">🌐 NEXUS WORLD LOADER</b><br>
+        <small>Cole o mapa inteiro abaixo:</small>
+        <textarea id="map-input" style="width:95%;height:150px;margin-top:10px;background:#111;color:#0f0;border:1px solid #333;"></textarea>
+        <button id="btn-load-world" style="width:100%;margin-top:10px;padding:10px;background:#ff00ff;color:#000;font-weight:bold;cursor:pointer;border:none;">RECONSTRUIR MUNDO</button>
+        <div id="load-status" style="font-size:10px;margin-top:5px;"></div>
+    `;
+    document.body.appendChild(panel);
+
+    document.getElementById('btn-load-world').onclick = () => {
+        const raw = document.getElementById('map-input').value;
+        const scene = window.scene;
+        const status = document.getElementById('load-status');
+        
+        try {
+            const blocos = JSON.parse(raw);
+            status.innerText = `Processando ${blocos.length} objetos...`;
+
+            blocos.forEach((b, index) => {
+                let geo;
+                // Ajusta geometria básica baseada no tipo do Roblox
+                if(b.tipo === "Cylinder") geo = new THREE.CylinderGeometry(b.sx/2, b.sx/2, b.sy, 32);
+                else if(b.tipo === "Sphere") geo = new THREE.SphereGeometry(b.sx/2, 32, 32);
+                else geo = new THREE.BoxGeometry(b.sx, b.sy, b.sz);
+
+                const mat = new THREE.MeshStandardMaterial({ 
+                    color: b.cor, 
+                    transparent: b.transp > 0, 
+                    opacity: 1 - b.transp 
+                });
+                
+                const mesh = new THREE.Mesh(geo, mat);
+                mesh.position.set(b.px, b.py, b.pz);
+                mesh.rotation.set(b.rx * (Math.PI/180), b.ry * (Math.PI/180), b.rz * (Math.PI/180));
+                
+                scene.add(mesh);
+            });
+
+            status.style.color = "#0f0";
+            status.innerText = "MAPA CARREGADO COM SUCESSO!";
+        } catch(err) {
+            status.style.color = "#f00";
+            status.innerText = "ERRO: Código corrompido ou muito grande.";
+        }
+    };
+})();
