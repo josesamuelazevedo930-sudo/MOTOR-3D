@@ -1,0 +1,89 @@
+(function() {
+    if(document.getElementById('ui-multi')) document.getElementById('ui-multi').remove();
+
+    const mqttScript = document.createElement('script');
+    mqttScript.src = 'https://cdn.jsdelivr.net/npm/mqtt@4.1.0/dist/mqtt.min.js';
+    document.head.appendChild(mqttScript);
+
+    mqttScript.onload = () => {
+        // Criar UI de Seleção de Sala (Lobby)
+        const lobby = document.createElement('div');
+        lobby.id = 'ui-multi';
+        lobby.style.cssText = "position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); width:300px; background:rgba(0,10,30,0.95); border:2px solid #00ffff; border-radius:12px; padding:20px; color:#00ffff; z-index:10000; font-family:sans-serif; text-align:center;";
+        lobby.innerHTML = `
+            <h2 style="margin-top:0;">NEXUS LOBBY V9</h2>
+            <input id="mp-name" placeholder="Seu Nick" style="width:90%; padding:10px; margin-bottom:10px; background:#001a33; color:#fff; border:1px solid #00ffff;">
+            <select id="mp-room" style="width:96%; padding:10px; margin-bottom:20px; background:#001a33; color:#fff; border:1px solid #00ffff;">
+                <option value="1">SALA BRASIL 01</option>
+                <option value="2">SALA MUNDO 02</option>
+                <option value="TESTE">SALA DE TESTES</option>
+            </select>
+            <button id="btn-con" style="width:100%; padding:12px; background:#00ffff; color:#000; font-weight:bold; border:none; cursor:pointer;">🎮 ENTRAR NO JOGO</button>
+        `;
+        document.body.appendChild(lobby);
+
+        document.getElementById('btn-con').onclick = () => {
+            const nick = document.getElementById('mp-name').value || "User" + Math.floor(Math.random()*99);
+            const sala = document.getElementById('mp-room').value;
+            iniciarMultiplayerV9(nick, sala);
+            lobby.style.display = 'none';
+        };
+    };
+
+    function iniciarMultiplayerV9(meuNome, sala) {
+        const client = mqtt.connect('wss://broker.emqx.io:8084/mqtt');
+        const remotePlayers = {};
+        const jScene = window.scene || scene;
+
+        client.on('connect', () => {
+            client.subscribe('siri/multi/' + sala);
+            console.log("Conectado na Sala " + sala);
+        });
+
+        client.on('message', (topic, msg) => {
+            try {
+                const data = JSON.parse(msg.toString());
+                if (data.id === meuNome) return;
+
+                // Criação/Atualização do Avatar (Site ou Roblox)
+                if (!remotePlayers[data.id]) {
+                    const group = new THREE.Group();
+                    // Loader do Soldier padrão
+                    new THREE.GLTFLoader().load('https://threejs.org/examples/models/gltf/Soldier.glb', (gltf) => {
+                        const m = gltf.scene; m.scale.set(5,5,5); group.add(m);
+                    });
+                    // Label de Nome
+                    const canv = document.createElement('canvas'); const ctx = canv.getContext('2d');
+                    canv.width = 256; canv.height = 64; ctx.fillStyle = '#ff00ff'; ctx.font = 'bold 30px Arial';
+                    ctx.textAlign = 'center'; ctx.fillText(data.id, 128, 45);
+                    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({map: new THREE.CanvasTexture(canv)}));
+                    sprite.position.y = 10; sprite.scale.set(6, 1.5, 1);
+                    group.add(sprite);
+                    jScene.add(group);
+                    remotePlayers[data.id] = group;
+                }
+                
+                const p = remotePlayers[data.id];
+                p.position.set(data.x, data.y, data.z);
+                p.rotation.y = data.ry;
+                p.lastSeen = Date.now();
+            } catch(e) {}
+        });
+
+        // Enviar minha posição (apenas se for navegador)
+        setInterval(() => {
+            const pLocal = window.player || player;
+            if (client.connected && pLocal) {
+                client.publish('siri/multi/' + sala, JSON.stringify({
+                    type: 'sync', id: meuNome, x: pLocal.position.x, y: pLocal.position.y, z: pLocal.position.z, ry: pLocal.rotation.y
+                }));
+            }
+            // Limpeza de inativos
+            for(let id in remotePlayers) {
+                if(Date.now() - remotePlayers[id].lastSeen > 5000) {
+                    jScene.remove(remotePlayers[id]); delete remotePlayers[id];
+                }
+            }
+        }, 100);
+    }
+})();
