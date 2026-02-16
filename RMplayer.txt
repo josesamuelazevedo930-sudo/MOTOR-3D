@@ -1,0 +1,129 @@
+(function() {
+    // 1. LIMPEZA E IMPORTAÇÃO
+    if(document.getElementById('ui-multi')) document.getElementById('ui-multi').remove();
+    const mqttScript = document.createElement('script');
+    mqttScript.src = 'https://cdn.jsdelivr.net/npm/mqtt@4.1.0/dist/mqtt.min.js';
+    document.head.appendChild(mqttScript);
+
+    mqttScript.onload = () => { iniciarNexusV8(); };
+
+    function iniciarNexusV8() {
+        // 2. INTERFACE AZUL (V8)
+        const ui = document.createElement('div');
+        ui.id = 'ui-multi';
+        ui.style.cssText = "position:absolute; left:20px; top:20px; width:260px; background:rgba(0,10,30,0.95); border-radius:12px; padding:15px; color:#00ffff; border:2px solid #00ffff; z-index:1000; font-family:sans-serif; box-shadow: 0 0 15px rgba(0,255,255,0.4);";
+        ui.innerHTML = `
+            <div style="font-weight:bold; text-align:center; margin-bottom:10px; text-shadow: 0 0 5px #00ffff;">🌐 NEXUS MULTI V8 - LIVE</div>
+            <div id="setup-mp">
+                <input id="mp-name" placeholder="Nome" style="width:90%; padding:8px; margin-bottom:5px; background:#001a33; color:#fff; border:1px solid #00ffff; border-radius:4px;">
+                <input id="mp-room" placeholder="Sala" value="1" style="width:90%; padding:8px; margin-bottom:10px; background:#001a33; color:#fff; border:1px solid #00ffff; border-radius:4px;">
+                <button id="btn-con" style="width:100%; padding:10px; background:#00ffff; color:#000; font-weight:bold; border:none; border-radius:6px; cursor:pointer;">🎮 CONECTAR</button>
+            </div>
+            <div id="mp-active" style="display:none;">
+                <div id="chat-logs" style="height:100px; overflow-y:auto; font-size:11px; background:rgba(0,0,0,0.5); color:#00ffff; padding:8px; border:1px solid #005577; border-radius:4px;"></div>
+                <div style="display:flex; margin-top:10px; gap:5px;">
+                    <input id="chat-in" placeholder="Diga algo..." style="flex:1; background:#001a33; color:#fff; border:1px solid #005577; padding:8px; border-radius:4px;">
+                    <button id="btn-send" style="padding:5px 12px; background:#00ffff; color:#000; font-weight:bold; border:none; border-radius:4px;">OK</button>
+                </div>
+                <div id="st-count" style="font-size:10px; color:#00ffff; margin-top:8px; text-align:center; opacity:0.8;">👥 JOGADORES: 0</div>
+            </div>
+        `;
+        document.body.appendChild(ui);
+
+        let client, sala, meuNome, remotePlayers = {};
+        const jScene = window.scene || scene;
+        const loader = window.loaderGLTF || new THREE.GLTFLoader();
+
+        // 3. LÓGICA DE CRIAÇÃO DOS AVATARES
+        function criarAvatarRemoto(id) {
+            const grupo = new THREE.Group();
+            grupo.targetPos = new THREE.Vector3();
+            
+            // Label de Nome
+            const canvasN = document.createElement('canvas'); canvasN.width = 256; canvasN.height = 64;
+            const ctxN = canvasN.getContext('2d'); ctxN.fillStyle = '#ff00ff'; ctxN.font = 'bold 30px Arial';
+            ctxN.textAlign = 'center'; ctxN.fillText(id, 128, 45);
+            const labelN = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(canvasN) }));
+            labelN.scale.set(6, 1.5, 1); labelN.position.y = 10;
+            grupo.add(labelN);
+
+            // Modelo Soldier padrão
+            loader.load('https://threejs.org/examples/models/gltf/Soldier.glb', (gltf) => {
+                const model = gltf.scene; model.scale.set(5, 5, 5); grupo.add(model);
+                const mixer = new THREE.AnimationMixer(model);
+                const actions = {};
+                gltf.animations.forEach(clip => { actions[clip.name.toLowerCase()] = mixer.clipAction(clip); });
+                grupo.mixer = mixer; grupo.actions = actions;
+                if(actions['idle']) actions['idle'].play();
+            });
+
+            jScene.add(grupo);
+            return grupo;
+        }
+
+        document.getElementById('btn-con').onclick = () => {
+            meuNome = document.getElementById('mp-name').value || "User" + Math.floor(Math.random()*99);
+            sala = document.getElementById('mp-room').value || "1";
+            document.getElementById('setup-mp').style.display = 'none';
+            document.getElementById('mp-active').style.display = 'block';
+
+            client = mqtt.connect('wss://broker.emqx.io:8084/mqtt');
+
+            client.on('connect', () => {
+                client.subscribe('siri/multi/' + sala);
+                addLog("SISTEMA", "Conectado à Sala " + sala);
+            });
+
+            client.on('message', (topic, msg) => {
+                try {
+                    const data = JSON.parse(msg.toString());
+                    if (data.id === meuNome) return;
+
+                    if (data.type === 'sync') {
+                        if (!remotePlayers[data.id]) {
+                            remotePlayers[data.id] = criarAvatarRemoto(data.id);
+                        }
+                        const p = remotePlayers[data.id];
+                        p.targetPos.set(data.x, data.y, data.z);
+                        p.rotation.y = data.ry || 0;
+                        p.lastSeen = Date.now();
+                    }
+                    
+                    if (data.type === 'chat') {
+                        addLog(data.id, data.text);
+                    }
+                } catch(e){}
+            });
+        };
+
+        // 4. LOOP DE ATUALIZAÇÃO (Sincroniza Site e Roblox)
+        setInterval(() => {
+            if (client && client.connected && (window.player || player)) {
+                const pLocal = window.player || player;
+                client.publish('siri/multi/' + sala, JSON.stringify({
+                    type: 'sync', id: meuNome, x: pLocal.position.x, y: pLocal.position.y, z: pLocal.position.z, ry: pLocal.rotation.y
+                }));
+            }
+            for(let id in remotePlayers) {
+                const p = remotePlayers[id];
+                p.position.lerp(p.targetPos, 0.2); // Movimento Suave
+                if(p.mixer) p.mixer.update(0.016);
+                if(Date.now() - p.lastSeen > 5000) { jScene.remove(p); delete remotePlayers[id]; }
+            }
+        }, 100);
+
+        function addLog(n, t) {
+            const logs = document.getElementById('chat-logs');
+            logs.innerHTML += `<div><b style="color:#00ffff">${n}:</b> <span style="color:#fff">${t}</span></div>`;
+            logs.scrollTop = logs.scrollHeight;
+        }
+
+        document.getElementById('btn-send').onclick = () => {
+            const i = document.getElementById('chat-in');
+            if(i.value && client) {
+                client.publish('siri/multi/' + sala, JSON.stringify({ type: 'chat', id: meuNome, text: i.value }));
+                addLog("Eu", i.value); i.value = "";
+            }
+        };
+    }
+})();
