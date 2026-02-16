@@ -1,0 +1,71 @@
+(function() {
+    if(document.getElementById('ui-multi')) document.getElementById('ui-multi').remove();
+    const mqttScript = document.createElement('script');
+    mqttScript.src = 'https://cdn.jsdelivr.net/npm/mqtt@4.1.0/dist/mqtt.min.js';
+    document.head.appendChild(mqttScript);
+
+    mqttScript.onload = () => {
+        // UI de Entrada (Lobby)
+        const lobby = document.createElement('div');
+        lobby.id = 'ui-multi';
+        lobby.style.cssText = "position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:300px;background:#000a1e;border:2px solid #00ffff;padding:20px;color:#00ffff;z-index:10000;font-family:sans-serif;text-align:center;border-radius:15px;";
+        lobby.innerHTML = `
+            <h3>🌐 NEXUS MULTI V12</h3>
+            <input id="mp-name" placeholder="Nick" style="width:80%;padding:10px;margin-bottom:10px;">
+            <input id="mp-room" value="1" placeholder="Sala" style="width:80%;padding:10px;margin-bottom:10px;">
+            <button id="btn-con" style="width:85%;padding:12px;background:#00ffff;font-weight:bold;cursor:pointer;">ENTRAR</button>
+        `;
+        document.body.appendChild(lobby);
+
+        document.getElementById('btn-con').onclick = () => {
+            const nick = document.getElementById('mp-name').value || "User" + Math.floor(Math.random()*99);
+            const sala = document.getElementById('mp-room').value || "1";
+            lobby.style.display = 'none';
+            setupV12(nick, sala);
+        };
+    };
+
+    function setupV12(meuNome, sala) {
+        const client = mqtt.connect('wss://broker.emqx.io:8084/mqtt');
+        const remotePlayers = {};
+        const scene = window.scene;
+
+        // Chat Visual
+        const log = document.createElement('div');
+        log.style.cssText = "position:absolute;left:10px;top:10px;width:200px;height:150px;background:rgba(0,0,0,0.7);color:#0f0;font-size:12px;overflow:auto;padding:5px;z-index:9999;";
+        document.body.appendChild(log);
+
+        client.on('connect', () => { client.subscribe('siri/multi/'+sala); });
+
+        client.on('message', (topic, msg) => {
+            const data = JSON.parse(msg.toString());
+            if (data.id === meuNome) return;
+
+            if (data.type === 'sync') {
+                if (!remotePlayers[data.id]) {
+                    const g = new THREE.Group();
+                    new THREE.GLTFLoader().load('https://threejs.org/examples/models/gltf/Soldier.glb', (gltf)=>{
+                        gltf.scene.scale.set(5,5,5); g.add(gltf.scene);
+                    });
+                    scene.add(g); remotePlayers[data.id] = g;
+                }
+                remotePlayers[data.id].position.set(data.x, data.y, data.z);
+                remotePlayers[data.id].lastSeen = Date.now();
+            }
+            if (data.type === 'chat') {
+                log.innerHTML += `<div><b>${data.id}:</b> ${data.text}</div>`;
+                log.scrollTop = log.scrollHeight;
+            }
+        });
+
+        // Enviar Posição
+        setInterval(() => {
+            const p = window.player;
+            if (client.connected && p) {
+                client.publish('siri/multi/'+sala, JSON.stringify({
+                    type: 'sync', id: meuNome, x: p.position.x, y: p.position.y, z: p.position.z
+                }));
+            }
+        }, 100);
+    }
+})();
