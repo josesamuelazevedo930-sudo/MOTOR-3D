@@ -1,0 +1,68 @@
+(function() {
+    if(document.getElementById('nexus-manager')) document.getElementById('nexus-manager').remove();
+
+    const ui = document.createElement('div');
+    ui.id = 'nexus-manager';
+    ui.style.cssText = "position:absolute; top:20px; left:20px; width:300px; background:rgba(0,0,0,0.9); border:2px solid #00ff00; color:#fff; z-index:10000; padding:15px; font-family:sans-serif; border-radius:10px;";
+    ui.innerHTML = `
+        <h3 style="margin:0 0 10px 0; color:#00ff00;">📁 MEUS MAPAS SALVOS</h3>
+        <input id="map-name" placeholder="Nome do Mapa" style="width:93%; padding:5px; margin-bottom:5px;">
+        <textarea id="map-data" placeholder="Cole o código aqui..." style="width:93%; height:60px; font-size:10px;"></textarea>
+        <button id="btn-save" style="width:100%; padding:8px; background:#00ff00; border:none; font-weight:bold; cursor:pointer; margin-top:5px;">SALVAR NA LISTA</button>
+        <hr style="border:0; border-top:1px solid #333; margin:15px 0;">
+        <div id="map-list" style="max-height:150px; overflow-y:auto;"></div>
+    `;
+    document.body.appendChild(ui);
+
+    // FUNÇÃO PARA SALVAR NO NAVEGADOR (localStorage)
+    function salvarMapa() {
+        const nome = document.getElementById('map-name').value || "Mapa " + Date.now();
+        const codigo = document.getElementById('map-data').value;
+        if(!codigo) return alert("Cole o código primeiro!");
+
+        const salvos = JSON.parse(localStorage.getItem('nexus_maps') || '{}');
+        salvos[nome] = codigo;
+        localStorage.setItem('nexus_maps', JSON.stringify(salvos));
+        
+        document.getElementById('map-data').value = "";
+        alert("Mapa '" + nome + "' salvo para sempre nesta TV/PC!");
+        renderizarLista();
+    }
+
+    // FUNÇÃO PARA CONSTRUIR O MAPA NA CENA
+    function carregarMapa(nome) {
+        const salvos = JSON.parse(localStorage.getItem('nexus_maps') || '{}');
+        const data = JSON.parse(salvos[nome]);
+        const scene = window.scene || scene;
+
+        data.forEach(obj => {
+            const mesh = new THREE.Mesh(
+                new THREE.BoxGeometry(obj.s[0], obj.s[1], obj.s[2]),
+                new THREE.MeshStandardMaterial({ color: "#" + obj.c })
+            );
+            mesh.position.set(obj.p[0], obj.p[1], obj.p[2]);
+            scene.add(mesh);
+        });
+        alert("Mapa '" + nome + "' carregado!");
+    }
+
+    function renderizarLista() {
+        const lista = document.getElementById('map-list');
+        const salvos = JSON.parse(localStorage.getItem('nexus_maps') || '{}');
+        lista.innerHTML = "";
+        
+        for(let nome in salvos) {
+            const item = document.createElement('div');
+            item.style.cssText = "display:flex; justify-content:space-between; background:#222; margin-bottom:5px; padding:5px; border-radius:4px;";
+            item.innerHTML = `
+                <span>${nome}</span>
+                <button onclick="window.nexusLoad('${nome}')" style="background:#00ff00; border:none; border-radius:3px; cursor:pointer;">ABRIR</button>
+            `;
+            lista.appendChild(item);
+        }
+    }
+
+    window.nexusLoad = carregarMapa;
+    document.getElementById('btn-save').onclick = salvarMapa;
+    renderizarLista();
+})();
