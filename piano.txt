@@ -1,0 +1,95 @@
+(function() {
+    // 1. ESTILOS DO PIANO
+    const style = document.createElement('style');
+    style.innerHTML = `
+        #piano-panel {
+            position: absolute; bottom: 180px; left: 20px;
+            background: #222; padding: 10px; border-radius: 10px;
+            border: 2px solid #555; z-index: 10006; display: none;
+            user-select: none; box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+        }
+        .piano-keys { display: flex; gap: 2px; background: #000; padding: 5px; border-radius: 5px; }
+        .key {
+            width: 30px; height: 100px; background: white;
+            border-radius: 0 0 3px 3px; display: flex; align-items: flex-end;
+            justify-content: center; font-size: 10px; font-weight: bold;
+            color: #888; padding-bottom: 5px; cursor: pointer;
+        }
+        .key.active { background: #ddd; transform: translateY(2px); }
+        #tgl-piano { bottom: 70px; left: 145px; background: #ffcc00; color: #000; width: 40px; height: 40px; font-size: 18px; }
+    `;
+    document.head.appendChild(style);
+
+    // 2. INTERFACE
+    const pianoBtn = document.createElement('button');
+    pianoBtn.id = 'tgl-piano';
+    pianoBtn.className = 'top-ctrl';
+    pianoBtn.innerText = '🎹';
+    document.getElementById('mobile-hud').appendChild(pianoBtn);
+
+    const pianoPanel = document.createElement('div');
+    pianoPanel.id = 'piano-panel';
+    pianoPanel.innerHTML = `
+        <div style="color:white; font-size:10px; margin-bottom:5px; text-align:center;">PIANO (Q W R T Y U I O P)</div>
+        <div class="piano-keys" id="piano-container"></div>
+    `;
+    document.body.appendChild(pianoPanel);
+
+    // 3. LÓGICA DE SOM (Web Audio API)
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const notes = {
+        'q': 261.63, 'w': 293.66, 'e': 329.63, 'r': 349.23, 
+        't': 392.00, 'y': 440.00, 'u': 493.88, 'i': 523.25, 
+        'o': 587.33, 'p': 659.25
+    };
+
+    function playNote(freq) {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+        gain.gain.setValueAtTime(0.5, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.8);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.8);
+    }
+
+    // Gerar teclas visualmente
+    const container = document.getElementById('piano-container');
+    Object.keys(notes).forEach(key => {
+        const div = document.createElement('div');
+        div.className = 'key';
+        div.id = `key-${key}`;
+        div.innerText = key.toUpperCase();
+        div.onclick = () => { playNote(notes[key]); highlightKey(key); };
+        container.appendChild(div);
+    });
+
+    function highlightKey(key) {
+        const el = document.getElementById(`key-${key}`);
+        if(el) {
+            el.classList.add('active');
+            setTimeout(() => el.classList.remove('active'), 150);
+        }
+    }
+
+    // 4. EVENTOS DE TECLADO
+    window.addEventListener('keydown', (e) => {
+        const key = e.key.toLowerCase();
+        if(notes[key]) {
+            playNote(notes[key]);
+            highlightKey(key);
+        }
+    });
+
+    // Abrir/Fechar
+    pianoBtn.onclick = () => {
+        const isVisible = pianoPanel.style.display === 'block';
+        pianoPanel.style.display = isVisible ? 'none' : 'block';
+        if(audioCtx.state === 'suspended') audioCtx.resume();
+    };
+
+    console.log("Piano Virtual pronto! Use QWERTYUIOP.");
+})();
