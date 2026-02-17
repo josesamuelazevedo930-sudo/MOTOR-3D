@@ -1,0 +1,156 @@
+(function() {
+    // 1. ESTILOS: GARANTE QUE O JOGO NÃO MOVA
+    if(document.getElementById('mobile-hud')) document.getElementById('mobile-hud').remove();
+    
+    const style = document.createElement('style');
+    style.innerHTML = `
+        /* Trava a tela do jogo para não arrastar por erro */
+        html, body, canvas { 
+            position: fixed; overflow: hidden; 
+            width: 100%; height: 100%; 
+            touch-action: none; -webkit-user-select: none; 
+        }
+
+        #mobile-hud { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10000; }
+        .top-ctrl { pointer-events: auto; position: absolute; top: 10px; padding: 10px; background: #000; color: #fff; border: 1px solid #fff; border-radius: 8px; font-size: 10px; z-index: 10005; }
+        #fs-btn { left: 10px; }
+        #sens-btn { left: 80px; }
+        #edit-hud-btn { right: 10px; background: #ff00ff; }
+
+        /* HUD */
+        #joy-base { position: absolute; bottom: 40px; left: 40px; width: 120px; height: 120px; background: rgba(255,255,255,0.1); border: 2px solid #fff; border-radius: 50%; pointer-events: auto; }
+        #joy-stick { position: absolute; top: 35px; left: 35px; width: 50px; height: 50px; background: #fff; border-radius: 50%; opacity: 0.8; pointer-events: none; }
+        #mobile-jump-btn { position: absolute; bottom: 40px; right: 40px; width: 100px; height: 100px; background: rgba(255,255,255,0.2); border: 3px solid #fff; border-radius: 50%; color: #fff; display: flex; align-items: center; justify-content: center; font-weight: bold; pointer-events: auto; }
+
+        /* Feedback visual apenas para menus */
+        .gui-resizing { border: 3px solid #00ff00 !important; outline: 3px solid #00ff00 !important; z-index: 10001 !important; }
+    `;
+    document.head.appendChild(style);
+
+    const hud = document.createElement('div');
+    hud.id = 'mobile-hud';
+    hud.innerHTML = `
+        <div id="joy-base"><div id="joy-stick"></div></div>
+        <div id="mobile-jump-btn">PULAR</div>
+        <button id="fs-btn" class="top-ctrl">📺 FULL</button>
+        <button id="sens-btn" class="top-ctrl">⚙️ SENS</button>
+        <button id="edit-hud-btn" class="top-ctrl">🔧 MOVER HUD</button>
+    `;
+    document.body.appendChild(hud);
+
+    let sens = 0.007, isEditingHUD = false, lastTX = 0;
+
+    // 2. CONTROLE DE VISÃO (DENTRO DO CANVAS SEM MOVER A TELA)
+    document.addEventListener('touchmove', (e) => {
+        if(isEditingHUD) return;
+        const t = e.touches[0];
+        // Se tocar no lado direito e NÃO for em um menu/botão, gira a câmera
+        if (t.clientX > window.innerWidth / 2 && e.target.tagName === 'CANVAS') {
+            let dx = t.clientX - lastTX;
+            if(window.camRot !== undefined) window.camRot -= dx * sens;
+            lastTX = t.clientX;
+        }
+    }, {passive: false});
+
+    document.addEventListener('touchstart', (e) => {
+        if (e.target.tagName === 'CANVAS') lastTX = e.touches[0].clientX;
+    }, {passive: true});
+
+    // 3. LÓGICA DE MENUS (REDIMENSIONAR SEMPRE / MOVER SEMPRE)
+    function applyMenuLogic(el) {
+        // Bloqueia aplicar isso no jogo ou no HUD principal
+        if(!el || el.tagName === 'CANVAS' || el.tagName === 'BODY' || el.id === 'mobile-hud') return;
+        
+        let timer, isResizing = false, isDragging = false;
+        let sW, sH, sX, sY, sL, sT;
+
+        el.addEventListener('touchstart', (e) => {
+            const t = e.touches[0];
+            sX = t.clientX; sY = t.clientY;
+            sW = el.offsetWidth; sH = el.offsetHeight;
+            sL = el.offsetLeft; sT = el.offsetTop;
+
+            // Timer para Redimensionar (Segurar 1s)
+            timer = setTimeout(() => {
+                isResizing = true;
+                el.classList.add('gui-resizing');
+                if(navigator.vibrate) navigator.vibrate(40);
+            }, 1000);
+
+            // Se for um clique rápido, ativa o arraste (Drag)
+            isDragging = true;
+        }, {passive: true});
+
+        el.addEventListener('touchmove', (e) => {
+            const t = e.touches[0];
+            if (isResizing) {
+                el.style.width = (sW + (t.clientX - sX)) + 'px';
+                el.style.height = (sH + (t.clientY - sY)) + 'px';
+                e.preventDefault();
+            } else if (isDragging) {
+                clearTimeout(timer); // Se moveu rápido, não vai redimensionar
+                el.style.position = 'absolute';
+                el.style.left = (sL + (t.clientX - sX)) + 'px';
+                el.style.top = (sT + (t.clientY - sY)) + 'px';
+                el.style.bottom = 'auto'; el.style.right = 'auto';
+            }
+        }, {passive: false});
+
+        el.addEventListener('touchend', () => {
+            clearTimeout(timer);
+            isResizing = false;
+            isDragging = false;
+            el.classList.remove('gui-resizing');
+        });
+    }
+
+    // 4. SCANNER PARA MENUS E GUI (Ignora o jogo)
+    setInterval(() => {
+        document.querySelectorAll('div, button').forEach(el => {
+            // Só aplica se NÃO for parte do meu HUD e não for o canvas
+            if(!el.dataset.guiReady && !el.closest('#mobile-hud') && el.tagName !== 'CANVAS') {
+                applyMenuLogic(el);
+                el.dataset.guiReady = "true";
+                el.style.pointerEvents = "auto"; 
+            }
+        });
+    }, 1000);
+
+    // 5. CONTROLES DO HUD (Joystick e Pulo)
+    const base = document.getElementById('joy-base');
+    const stick = document.getElementById('joy-stick');
+    
+    base.addEventListener('touchmove', (e) => {
+        if(isEditingHUD) {
+            const t = e.touches[0];
+            base.style.left = (t.clientX - 60) + 'px';
+            base.style.top = (t.clientY - 60) + 'px';
+            return;
+        }
+        const t = e.touches[0], rect = base.getBoundingClientRect();
+        const cx = rect.left + 60, cy = rect.top + 60;
+        let dx = t.clientX - cx, dy = t.clientY - cy;
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        if(dist > 50) { dx *= 50/dist; dy *= 50/dist; }
+        stick.style.transform = `translate(${dx}px, ${dy}px)`;
+        keys['KeyW'] = dy < -15; keys['KeyS'] = dy > 15;
+        keys['KeyA'] = dx < -15; keys['KeyD'] = dx > 15;
+    });
+
+    base.addEventListener('touchend', () => {
+        stick.style.transform = `translate(0,0)`;
+        keys['KeyW'] = keys['KeyS'] = keys['KeyA'] = keys['KeyD'] = false;
+    });
+
+    document.getElementById('mobile-jump-btn').ontouchstart = (e) => {
+        if(window.jump) window.jump();
+    };
+
+    document.getElementById('fs-btn').onclick = () => document.documentElement.requestFullscreen();
+    document.getElementById('sens-btn').onclick = () => { sens = parseFloat(prompt("Sensibilidade:", sens)) || 0.007; };
+    document.getElementById('edit-hud-btn').onclick = () => {
+        isEditingHUD = !isEditingHUD;
+        document.getElementById('edit-hud-btn').innerText = isEditingHUD ? "✅ SALVAR" : "🔧 MOVER HUD";
+    };
+
+})();
