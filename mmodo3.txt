@@ -1,0 +1,138 @@
+(function() {
+    // 1. ESTILOS E INTERFACE
+    if(document.getElementById('mobile-hud')) document.getElementById('mobile-hud').remove();
+    
+    // Esconde o botão de pulo original
+    if(document.getElementById('jump-btn')) document.getElementById('jump-btn').style.display = 'none';
+
+    const style = document.createElement('style');
+    style.innerHTML = `
+        #mobile-hud { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10000; }
+        .touch-zone { pointer-events: auto; touch-action: none; }
+        
+        /* Joystick Fixo (Sem redimensionamento) */
+        #joy-base { position: absolute; bottom: 40px; left: 40px; width: 120px; height: 120px; background: rgba(255,255,255,0.1); border: 2px solid #fff; border-radius: 50%; }
+        #joy-stick { position: absolute; top: 35px; left: 35px; width: 50px; height: 50px; background: #fff; border-radius: 50%; opacity: 0.8; pointer-events: none; }
+        
+        /* Botão Pulo Fixo */
+        #mobile-jump-btn { position: absolute; bottom: 40px; right: 40px; width: 100px; height: 100px; background: rgba(255,255,255,0.2); border: 3px solid #fff; border-radius: 50%; color: #fff; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 14px; }
+
+        /* Botões Superiores */
+        .top-ctrl { position: absolute; top: 10px; padding: 10px; background: #000; color: #fff; border: 1px solid #fff; border-radius: 10px; font-size: 10px; font-weight: bold; }
+        #fs-btn { left: 50%; transform: translateX(-110%); }
+        #edit-hud-btn { left: 50%; transform: translateX(10%); }
+
+        /* Apenas os Painéis originais são redimensionáveis */
+        .panel { resize: both !important; overflow: auto !important; border: 1px solid #fff; }
+        .edit-mode-active { border: 2px dashed #ff00ff !important; }
+    `;
+    document.head.appendChild(style);
+
+    const hud = document.createElement('div');
+    hud.id = 'mobile-hud';
+    hud.innerHTML = `
+        <div id="joy-base" class="touch-zone"><div id="joy-stick"></div></div>
+        <div id="mobile-jump-btn" class="touch-zone">PULAR</div>
+        <button id="fs-btn" class="top-ctrl touch-zone">📺 FULLSCREEN</button>
+        <button id="edit-hud-btn" class="top-ctrl touch-zone">🔧 MOVER HUD</button>
+    `;
+    document.body.appendChild(hud);
+
+    // 2. MOVER E SALVAR (Apenas posição, sem resize para controles)
+    function enableDragAndSave(el, id) {
+        const saved = JSON.parse(localStorage.getItem('hud_pos_' + id));
+        if(saved) { el.style.left = saved.x; el.style.top = saved.y; el.style.bottom = 'auto'; el.style.right = 'auto'; }
+
+        el.addEventListener('touchstart', (e) => {
+            if(!window.isEditingHUD) return;
+            const t = e.touches[0];
+            let offX = t.clientX - el.offsetLeft;
+            let offY = t.clientY - el.offsetTop;
+
+            const move = (me) => {
+                const mt = me.touches[0];
+                el.style.left = (mt.clientX - offX) + 'px';
+                el.style.top = (mt.clientY - offY) + 'px';
+                el.style.bottom = 'auto'; el.style.right = 'auto';
+            };
+            const stop = () => {
+                document.removeEventListener('touchmove', move);
+                document.removeEventListener('touchend', stop);
+                localStorage.setItem('hud_pos_' + id, JSON.stringify({x: el.style.left, y: el.style.top}));
+            };
+            document.addEventListener('touchmove', move);
+            document.addEventListener('touchend', stop);
+        });
+    }
+
+    enableDragAndSave(document.getElementById('joy-base'), 'joystick');
+    enableDragAndSave(document.getElementById('mobile-jump-btn'), 'jump');
+    document.querySelectorAll('.panel').forEach((p, i) => enableDragAndSave(p, 'panel' + i));
+
+    // 3. FULLSCREEN E MODO EDIÇÃO
+    document.getElementById('fs-btn').onclick = () => {
+        if (!document.fullscreenElement) document.documentElement.requestFullscreen();
+        else document.exitFullscreen();
+    };
+
+    document.getElementById('edit-hud-btn').onclick = () => {
+        window.isEditingHUD = !window.isEditingHUD;
+        document.getElementById('joy-base').classList.toggle('edit-mode-active');
+        document.getElementById('mobile-jump-btn').classList.toggle('edit-mode-active');
+        document.getElementById('edit-hud-btn').innerText = window.isEditingHUD ? "✅ SALVAR" : "🔧 MOVER HUD";
+    };
+
+    // 4. JOYSTICK (EIXOS FIXOS)
+    let moveX = 0, moveZ = 0;
+    const base = document.getElementById('joy-base');
+    const stick = document.getElementById('joy-stick');
+
+    base.addEventListener('touchmove', (e) => {
+        if(window.isEditingHUD) return;
+        e.preventDefault();
+        const t = e.touches[0];
+        const rect = base.getBoundingClientRect();
+        const cx = rect.left + rect.width / 2;
+        const cy = rect.top + rect.height / 2;
+        let dx = t.clientX - cx;
+        let dy = t.clientY - cy;
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        const max = 50; 
+        if(dist > max) { dx *= max/dist; dy *= max/dist; }
+        stick.style.transform = `translate(${dx}px, ${dy}px)`;
+        
+        moveX = dx / max; moveZ = dy / max;
+        keys['KeyW'] = moveZ < -0.3; keys['KeyS'] = moveZ > 0.3;
+        keys['KeyA'] = moveX < -0.3; keys['KeyD'] = moveX > 0.3;
+    });
+
+    base.addEventListener('touchend', () => {
+        stick.style.transform = `translate(0,0)`;
+        keys['KeyW'] = keys['KeyS'] = keys['KeyA'] = keys['KeyD'] = false;
+    });
+
+    // 5. CÂMERA POR TOQUE (LADO DIREITO)
+    let lastTX = 0;
+    document.addEventListener('touchstart', (e) => { if(e.touches[0].clientX > window.innerWidth/2) lastTX = e.touches[0].clientX; });
+    document.addEventListener('touchmove', (e) => {
+        if(e.touches[0].clientX > window.innerWidth/2 && !window.isEditingHUD) {
+            let dx = e.touches[0].clientX - lastTX;
+            if(window.camRot !== undefined) window.camRot -= dx * 0.006;
+            lastTX = e.touches[0].clientX;
+        }
+    });
+
+    // 6. PULO E RESIZE DE TELA
+    document.getElementById('mobile-jump-btn').ontouchstart = (e) => {
+        e.preventDefault();
+        if(!window.isEditingHUD && window.jump) window.jump();
+    };
+
+    window.addEventListener('resize', () => {
+        if(renderer && camera) {
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+        }
+    });
+})();
