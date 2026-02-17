@@ -1,0 +1,161 @@
+(function() {
+    // 1. LIMPEZA E ESTILOS
+    if(document.getElementById('mobile-hud')) document.getElementById('mobile-hud').remove();
+    if(document.getElementById('jump-btn')) document.getElementById('jump-btn').style.display = 'none';
+
+    const style = document.createElement('style');
+    style.innerHTML = `
+        #mobile-hud { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10000; font-family: sans-serif; }
+        .touch-zone { pointer-events: auto; touch-action: none; }
+        
+        /* Controles Fixos */
+        #joy-base { position: absolute; bottom: 40px; left: 40px; width: 120px; height: 120px; background: rgba(255,255,255,0.1); border: 2px solid #fff; border-radius: 50%; }
+        #joy-stick { position: absolute; top: 35px; left: 35px; width: 50px; height: 50px; background: #fff; border-radius: 50%; opacity: 0.8; }
+        #mobile-jump-btn { position: absolute; bottom: 40px; right: 40px; width: 100px; height: 100px; background: rgba(255,255,255,0.2); border: 3px solid #fff; border-radius: 50%; color: #fff; display: flex; align-items: center; justify-content: center; font-weight: bold; }
+
+        /* Barra de Sistema */
+        .top-ctrl { position: absolute; top: 10px; padding: 10px; background: #000; color: #fff; border: 1px solid #fff; border-radius: 8px; font-size: 9px; font-weight: bold; pointer-events: auto; }
+        #fs-btn { left: 10px; }
+        #sens-btn { left: 90px; background: #444; }
+        #edit-hud-btn { right: 10px; background: #ff00ff; }
+
+        /* PAINÉIS */
+        .panel { 
+            resize: both !important; 
+            overflow: hidden !important; 
+            border: 2px solid #fff !important;
+            padding-top: 30px !important;
+            min-width: 150px; min-height: 100px;
+        }
+        .panel-handle {
+            position: absolute; top: 0; left: 0; width: 100%; height: 25px;
+            background: rgba(255,255,255,0.3); color: white; font-size: 10px;
+            display: flex; align-items: center; justify-content: center; touch-action: none;
+        }
+
+        .edit-active { border: 3px dashed #00ff00 !important; }
+        #camera-zone { position: absolute; top: 0; right: 0; width: 50%; height: 100%; z-index: 9998; pointer-events: auto; }
+    `;
+    document.head.appendChild(style);
+
+    const hud = document.createElement('div');
+    hud.id = 'mobile-hud';
+    hud.innerHTML = `
+        <div id="camera-zone"></div>
+        <div id="joy-base" class="touch-zone"><div id="joy-stick"></div></div>
+        <div id="mobile-jump-btn" class="touch-zone">PULAR</div>
+        <button id="fs-btn" class="top-ctrl">📺 TELA CHEIA</button>
+        <button id="sens-btn" class="top-ctrl">⚙️ SENS</button>
+        <button id="edit-hud-btn" class="top-ctrl">🔧 HUD</button>
+    `;
+    document.body.appendChild(hud);
+
+    // 2. VARIÁVEIS DE ESTADO
+    let moveX = 0, moveZ = 0, lastTX = 0;
+    window.mobileSens = 0.007;
+
+    // 3. MOVIMENTAÇÃO (JOYSTICK)
+    const base = document.getElementById('joy-base');
+    const stick = document.getElementById('joy-stick');
+
+    base.addEventListener('touchmove', (e) => {
+        if(window.isEditingHUD) return;
+        const t = e.touches[0];
+        const rect = base.getBoundingClientRect();
+        const cx = rect.left + rect.width / 2;
+        const cy = rect.top + rect.height / 2;
+        let dx = t.clientX - cx; let dy = t.clientY - cy;
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        const max = rect.width / 2.2;
+        if(dist > max) { dx *= max/dist; dy *= max/dist; }
+        stick.style.transform = `translate(${dx}px, ${dy}px)`;
+        moveX = dx / max; moveZ = dy / max;
+        keys['KeyW'] = moveZ < -0.3; keys['KeyS'] = moveZ > 0.3;
+        keys['KeyA'] = moveX < -0.3; keys['KeyD'] = moveX > 0.3;
+    });
+
+    base.addEventListener('touchend', () => {
+        stick.style.transform = `translate(0,0)`;
+        keys['KeyW'] = keys['KeyS'] = keys['KeyA'] = keys['KeyD'] = false;
+    });
+
+    // 4. CÂMERA (LADO DIREITO)
+    const camZone = document.getElementById('camera-zone');
+    camZone.addEventListener('touchstart', (e) => { lastTX = e.touches[0].clientX; });
+    camZone.addEventListener('touchmove', (e) => {
+        if(window.isEditingHUD) return;
+        let dx = e.touches[0].clientX - lastTX;
+        if(window.camRot !== undefined) window.camRot -= dx * window.mobileSens;
+        lastTX = e.touches[0].clientX;
+    });
+
+    // 5. HUD EDITOR (ARRASAR TUDO)
+    function makeDraggable(el, id, isPanel = false) {
+        const saved = JSON.parse(localStorage.getItem('v5_' + id));
+        if(saved) { el.style.left = saved.x; el.style.top = saved.y; el.style.bottom = 'auto'; el.style.right = 'auto'; }
+
+        const trigger = isPanel ? el.querySelector('.panel-handle') : el;
+        trigger.addEventListener('touchstart', (e) => {
+            if(!window.isEditingHUD && !isPanel) return;
+            let offX = e.touches[0].clientX - el.offsetLeft;
+            let offY = e.touches[0].clientY - el.offsetTop;
+            const move = (me) => {
+                el.style.left = (me.touches[0].clientX - offX) + 'px';
+                el.style.top = (me.touches[0].clientY - offY) + 'px';
+                el.style.bottom = 'auto'; el.style.right = 'auto';
+            };
+            const stop = () => {
+                document.removeEventListener('touchmove', move);
+                document.removeEventListener('touchend', stop);
+                localStorage.setItem('v5_' + id, JSON.stringify({x: el.style.left, y: el.style.top}));
+            };
+            document.addEventListener('touchmove', move);
+            document.addEventListener('touchend', stop);
+        });
+    }
+
+    // 6. OBSERVAR PAINÉIS (RESIZE E DRAG)
+    setInterval(() => {
+        document.querySelectorAll('.panel').forEach((p, i) => {
+            if(!p.querySelector('.panel-handle')) {
+                const h = document.createElement('div');
+                h.className = 'panel-handle'; h.innerText = "⠿ MOVER PAINEL";
+                p.prepend(h);
+                makeDraggable(p, 'panel' + i, true);
+            }
+        });
+    }, 1000);
+
+    // 7. BOTÕES SUPERIORES
+    document.getElementById('fs-btn').onclick = () => {
+        if (!document.fullscreenElement) document.documentElement.requestFullscreen();
+        else document.exitFullscreen();
+    };
+
+    document.getElementById('sens-btn').onclick = () => {
+        let s = prompt("Sensibilidade do Giro (0.001 a 0.03):", window.mobileSens);
+        if(s) window.mobileSens = parseFloat(s);
+    };
+
+    document.getElementById('edit-hud-btn').onclick = () => {
+        window.isEditingHUD = !window.isEditingHUD;
+        document.getElementById('joy-base').classList.toggle('edit-active');
+        document.getElementById('mobile-jump-btn').classList.toggle('edit-active');
+        document.getElementById('edit-hud-btn').innerText = window.isEditingHUD ? "✅ SALVAR" : "🔧 HUD";
+    };
+
+    makeDraggable(document.getElementById('joy-base'), 'joy');
+    makeDraggable(document.getElementById('mobile-jump-btn'), 'jump');
+
+    document.getElementById('mobile-jump-btn').addEventListener('touchstart', (e) => {
+        if(!window.isEditingHUD && window.jump) window.jump();
+    });
+
+    window.addEventListener('resize', () => {
+        if(window.renderer && window.camera) {
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+        }
+    });
+})();
