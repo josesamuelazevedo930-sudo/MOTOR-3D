@@ -1,0 +1,155 @@
+(function() {
+    if(document.getElementById('mobile-hud')) document.getElementById('mobile-hud').remove();
+    
+    const style = document.createElement('style');
+    style.innerHTML = `
+        html, body, canvas { 
+            position: fixed; overflow: hidden; 
+            width: 100%; height: 100%; 
+            touch-action: none; -webkit-user-select: none; 
+        }
+        #mobile-hud { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10000; }
+        .top-ctrl { pointer-events: auto; position: absolute; top: 10px; padding: 10px; background: #000; color: #fff; border: 1px solid #fff; border-radius: 8px; font-size: 10px; z-index: 10005; }
+        #fs-btn { left: 10px; }
+        #sens-btn { left: 80px; }
+        #edit-hud-btn { right: 10px; background: #ff00ff; }
+
+        #joy-base { position: absolute; bottom: 40px; left: 40px; width: 120px; height: 120px; background: rgba(255,255,255,0.1); border: 2px solid #fff; border-radius: 50%; pointer-events: auto; }
+        #joy-stick { position: absolute; top: 35px; left: 35px; width: 50px; height: 50px; background: #fff; border-radius: 50%; opacity: 0.8; pointer-events: none; }
+        #mobile-jump-btn { position: absolute; bottom: 40px; right: 40px; width: 100px; height: 100px; background: rgba(255,255,255,0.2); border: 3px solid #fff; border-radius: 50%; color: #fff; display: flex; align-items: center; justify-content: center; font-weight: bold; pointer-events: auto; }
+
+        .gui-resizing { border: 3px solid #00ff00 !important; outline: 3px solid #00ff00 !important; z-index: 10001 !important; }
+    `;
+    document.head.appendChild(style);
+
+    const hud = document.createElement('div');
+    hud.id = 'mobile-hud';
+    hud.innerHTML = `
+        <div id="joy-base"><div id="joy-stick"></div></div>
+        <div id="mobile-jump-btn">PULAR</div>
+        <button id="fs-btn" class="top-ctrl">📺 FULL</button>
+        <button id="sens-btn" class="top-ctrl">⚙️ SENS</button>
+        <button id="edit-hud-btn" class="top-ctrl">🔧 MOVER HUD</button>
+    `;
+    document.body.appendChild(hud);
+
+    let sens = 0.007, isEditingHUD = false;
+    let lastTX = 0, lastTY = 0, initialDist = 0;
+
+    // 1. CONTROLE DE VISÃO E ZOOM (PINÇA)
+    document.addEventListener('touchstart', (e) => {
+        if (e.target.tagName === 'CANVAS') {
+            if (e.touches.length === 1) {
+                lastTX = e.touches[0].clientX;
+                lastTY = e.touches[0].clientY;
+            } else if (e.touches.length === 2) {
+                initialDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+            }
+        }
+    }, {passive: true});
+
+    document.addEventListener('touchmove', (e) => {
+        if(isEditingHUD) return;
+        
+        if (e.target.tagName === 'CANVAS') {
+            if (e.touches.length === 1) {
+                // VISÃO: Apenas se não estiver no lado do joystick (opcional, mas garante estabilidade)
+                let t = e.touches[0];
+                let dx = t.clientX - lastTX;
+                let dy = t.clientY - lastTY;
+
+                if(window.camRot !== undefined) window.camRot -= dx * sens; // Horizontal
+                if(window.camTilt !== undefined) window.camTilt = Math.max(-1.5, Math.min(1.5, window.camTilt - dy * sens)); // Vertical
+                
+                lastTX = t.clientX;
+                lastTY = t.clientY;
+            } else if (e.touches.length === 2) {
+                // ZOOM (MOVIMENTO DE PINÇA)
+                let currentDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+                let zoomFactor = currentDist / initialDist;
+                if (window.camera && window.camera.fov) {
+                    window.camera.fov = Math.max(30, Math.min(100, window.camera.fov / zoomFactor));
+                    window.camera.updateProjectionMatrix();
+                }
+                initialDist = currentDist;
+            }
+            if(e.cancelable) e.preventDefault();
+        }
+    }, {passive: false});
+
+    // 2. LÓGICA DE MENUS (ARRASTAR E PINÇA PARA REDIMENSIONAR)
+    function applyMenuLogic(el) {
+        if(!el || el.tagName === 'CANVAS' || el.id === 'mobile-hud') return;
+        
+        let mInitialDist = 0, mInitialSize = {w:0, h:0}, isDragging = false, sX, sY, sL, sT;
+
+        el.addEventListener('touchstart', (e) => {
+            if (e.touches.length === 2) {
+                mInitialDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+                mInitialSize = { w: el.offsetWidth, h: el.offsetHeight };
+                el.classList.add('gui-resizing');
+            } else {
+                sX = e.touches[0].clientX; sY = e.touches[0].clientY;
+                sL = el.offsetLeft; sT = el.offsetTop;
+                isDragging = true;
+            }
+        }, {passive: true});
+
+        el.addEventListener('touchmove', (e) => {
+            if (e.touches.length === 2) {
+                let dist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+                let scale = dist / mInitialDist;
+                el.style.width = (mInitialSize.w * scale) + 'px';
+                el.style.height = (mInitialSize.h * scale) + 'px';
+            } else if (isDragging) {
+                let t = e.touches[0];
+                el.style.position = 'absolute';
+                el.style.left = (sL + (t.clientX - sX)) + 'px';
+                el.style.top = (sT + (t.clientY - sY)) + 'px';
+                el.style.bottom = 'auto'; el.style.right = 'auto';
+            }
+        });
+
+        el.addEventListener('touchend', () => { el.classList.remove('gui-resizing'); isDragging = false; });
+    }
+
+    // 3. SCANNER E HUD
+    setInterval(() => {
+        document.querySelectorAll('div').forEach(el => {
+            const isMenu = el.id.toLowerCase().includes('menu') || el.className.toLowerCase().includes('panel') || el.style.position === 'absolute';
+            if(isMenu && !el.dataset.guiReady && !el.closest('#mobile-hud')) {
+                applyMenuLogic(el);
+                el.dataset.guiReady = "true";
+                el.style.pointerEvents = "auto";
+            }
+        });
+    }, 1000);
+
+    const base = document.getElementById('joy-base');
+    const stick = document.getElementById('joy-stick');
+    base.addEventListener('touchmove', (e) => {
+        const t = e.touches[0], rect = base.getBoundingClientRect();
+        if(isEditingHUD) {
+            base.style.left = (t.clientX - 60) + 'px'; base.style.top = (t.clientY - 60) + 'px';
+            return;
+        }
+        let dx = t.clientX - (rect.left + 60), dy = t.clientY - (rect.top + 60);
+        let dist = Math.sqrt(dx*dx + dy*dy);
+        if(dist > 50) { dx *= 50/dist; dy *= 50/dist; }
+        stick.style.transform = `translate(${dx}px, ${dy}px)`;
+        keys['KeyW'] = dy < -15; keys['KeyS'] = dy > 15;
+        keys['KeyA'] = dx < -15; keys['KeyD'] = dx > 15;
+    });
+    base.addEventListener('touchend', () => {
+        stick.style.transform = `translate(0,0)`;
+        keys['KeyW'] = keys['KeyS'] = keys['KeyA'] = keys['KeyD'] = false;
+    });
+
+    document.getElementById('mobile-jump-btn').ontouchstart = () => { if(window.jump) window.jump(); };
+    document.getElementById('fs-btn').onclick = () => document.documentElement.requestFullscreen();
+    document.getElementById('sens-btn').onclick = () => { sens = parseFloat(prompt("Sensibilidade:", sens)) || 0.007; };
+    document.getElementById('edit-hud-btn').onclick = () => {
+        isEditingHUD = !isEditingHUD;
+        document.getElementById('edit-hud-btn').innerText = isEditingHUD ? "✅ SALVAR" : "🔧 MOVER HUD";
+    };
+})();
