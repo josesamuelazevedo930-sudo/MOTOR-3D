@@ -1,0 +1,169 @@
+(function() {
+    // === PARTE 1: ESTILOS E HUD ===
+    if(document.getElementById('mobile-hud')) document.getElementById('mobile-hud').remove();
+    
+    const style = document.createElement('style');
+    style.innerHTML = `
+        html, body, canvas { 
+            position: fixed; overflow: hidden; 
+            width: 100%; height: 100%; 
+            touch-action: none; -webkit-user-select: none; 
+        }
+        #mobile-hud { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10000; }
+        .top-ctrl { pointer-events: auto; position: absolute; top: 10px; padding: 10px; background: #000; color: #fff; border: 1px solid #fff; border-radius: 8px; font-size: 10px; z-index: 10005; }
+        #fs-btn { left: 10px; }
+        #sens-btn { left: 80px; }
+        #edit-hud-btn { right: 10px; background: #ff00ff; }
+
+        #joy-base { position: absolute; bottom: 40px; left: 40px; width: 120px; height: 120px; background: rgba(255,255,255,0.1); border: 2px solid #fff; border-radius: 50%; pointer-events: auto; }
+        #joy-stick { position: absolute; top: 35px; left: 35px; width: 50px; height: 50px; background: #fff; border-radius: 50%; opacity: 0.8; pointer-events: none; }
+        #mobile-jump-btn { position: absolute; bottom: 40px; right: 40px; width: 100px; height: 100px; background: rgba(255,255,255,0.2); border: 3px solid #fff; border-radius: 50%; color: #fff; display: flex; align-items: center; justify-content: center; font-weight: bold; pointer-events: auto; }
+
+        .gui-resizing { border: 3px solid #00ff00 !important; outline: 3px solid #00ff00 !important; z-index: 10001 !important; }
+    `;
+    document.head.appendChild(style);
+
+    const hud = document.createElement('div');
+    hud.id = 'mobile-hud';
+    hud.innerHTML = `
+        <div id="joy-base"><div id="joy-stick"></div></div>
+        <div id="mobile-jump-btn">PULAR</div>
+        <button id="fs-btn" class="top-ctrl">📺 FULL</button>
+        <button id="sens-btn" class="top-ctrl">⚙️ SENS</button>
+        <button id="edit-hud-btn" class="top-ctrl">🔧 MOVER HUD</button>
+    `;
+    document.body.appendChild(hud);
+
+    let sens = 0.007, isEditingHUD = false;
+
+    // === PARTE 2: LÓGICA DE MENUS ===
+    function applyMenuLogic(el) {
+        if(!el || el.tagName === 'CANVAS' || el.id === 'mobile-hud') return;
+        let timer, isResizing = false, isDragging = false;
+        let sW, sH, sX, sY, sL, sT;
+
+        el.addEventListener('touchstart', (e) => {
+            const t = e.touches[0];
+            if (['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName)) return;
+            sX = t.clientX; sY = t.clientY;
+            sW = el.offsetWidth; sH = el.offsetHeight;
+            sL = el.offsetLeft; sT = el.offsetTop;
+            timer = setTimeout(() => {
+                isResizing = true;
+                el.classList.add('gui-resizing');
+            }, 1000);
+            isDragging = true;
+        }, {passive: true});
+
+        el.addEventListener('touchmove', (e) => {
+            const t = e.touches[0];
+            if (isResizing) {
+                el.style.width = (sW + (t.clientX - sX)) + 'px';
+                el.style.height = (sH + (t.clientY - sY)) + 'px';
+            } else if (isDragging) {
+                if (!(el.scrollHeight > el.clientHeight && Math.abs(t.clientY - sY) > Math.abs(t.clientX - sX))) {
+                    clearTimeout(timer);
+                    el.style.position = 'absolute';
+                    el.style.left = (sL + (t.clientX - sX)) + 'px';
+                    el.style.top = (sT + (t.clientY - sY)) + 'px';
+                    if(e.cancelable) e.preventDefault();
+                }
+            }
+        }, {passive: false});
+
+        el.addEventListener('touchend', () => { clearTimeout(timer); isResizing = false; isDragging = false; el.classList.remove('gui-resizing'); });
+    }
+
+    setInterval(() => {
+        document.querySelectorAll('div').forEach(el => {
+            const isMenu = el.id.toLowerCase().includes('menu') || el.className.toLowerCase().includes('panel') || el.style.position === 'absolute';
+            if(isMenu && !el.dataset.guiReady && !el.closest('#mobile-hud') && el.tagName !== 'CANVAS') {
+                applyMenuLogic(el);
+                el.dataset.guiReady = "true";
+                el.style.pointerEvents = "auto";
+            }
+        });
+    }, 1000);
+
+    // === PARTE 3: JOYSTICK ===
+    const base = document.getElementById('joy-base');
+    const stick = document.getElementById('joy-stick');
+    let joyActive = false;
+
+    base.addEventListener('touchstart', () => { joyActive = true; }, {passive: true});
+    base.addEventListener('touchmove', (e) => {
+        const t = Array.from(e.touches).find(t => t.target === base || base.contains(t.target));
+        if(!t) return;
+        const rect = base.getBoundingClientRect();
+        if(isEditingHUD) {
+            base.style.left = (t.clientX - 60) + 'px'; base.style.top = (t.clientY - 60) + 'px';
+            return;
+        }
+        let dx = t.clientX - (rect.left + 60), dy = t.clientY - (rect.top + 60);
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        if(dist > 50) { dx *= 50/dist; dy *= 50/dist; }
+        stick.style.transform = `translate(${dx}px, ${dy}px)`;
+        if(window.keys) {
+            keys['KeyW'] = dy < -15; keys['KeyS'] = dy > 15;
+            keys['KeyA'] = dx < -15; keys['KeyD'] = dx > 15;
+        }
+    }, {passive: false});
+    base.addEventListener('touchend', () => {
+        joyActive = false;
+        stick.style.transform = `translate(0,0)`;
+        if(window.keys) keys['KeyW'] = keys['KeyS'] = keys['KeyA'] = keys['KeyD'] = false;
+    });
+
+    // === PARTE 4: VISÃO (CIMA/BAIXO) E ZOOM SEM BUG ===
+    let lastX_V = 0, lastY_V = 0, initialPinchDist_V = 0;
+
+    document.addEventListener('touchstart', (e) => {
+        if (e.target.tagName === 'CANVAS') {
+            const camTouches = Array.from(e.touches).filter(t => t.clientX > window.innerWidth / 3);
+            if (camTouches.length === 1) {
+                lastX_V = camTouches[0].clientX;
+                lastY_V = camTouches[0].clientY;
+            } else if (e.touches.length === 2 && !joyActive) {
+                initialPinchDist_V = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+            }
+        }
+    }, { passive: true });
+
+    document.addEventListener('touchmove', (e) => {
+        if (isEditingHUD) return;
+
+        const camTouches = Array.from(e.touches).filter(t => t.clientX > window.innerWidth / 3);
+        
+        // 1. VISÃO (Vertical e Horizontal)
+        if (camTouches.length === 1) {
+            let t = camTouches[0];
+            let dx = t.clientX - lastX_V;
+            let dy = t.clientY - lastY_V;
+
+            if (typeof camRot !== 'undefined') camRot -= dx * sens;
+            // Visão Cima/Baixo: Tentando alterar camDist ou uma possível camTilt
+            if (typeof camDist !== 'undefined') camDist = Math.max(10, Math.min(200, camDist + dy * 0.1));
+            
+            lastX_V = t.clientX;
+            lastY_V = t.clientY;
+        } 
+        // 2. ZOOM (Apenas se o joystick não estiver sendo usado)
+        else if (e.touches.length === 2 && !joyActive) {
+            let dist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+            if (initialPinchDist_V > 0) {
+                let diff = dist - initialPinchDist_V;
+                if (typeof camDist !== 'undefined') camDist = Math.max(10, Math.min(200, camDist - diff * 0.5));
+            }
+            initialPinchDist_V = dist;
+            if(e.cancelable) e.preventDefault();
+        }
+    }, { passive: false });
+
+    document.getElementById('mobile-jump-btn').ontouchstart = () => { if(window.jump) window.jump(); };
+    document.getElementById('fs-btn').onclick = () => document.documentElement.requestFullscreen();
+    document.getElementById('sens-btn').onclick = () => { sens = parseFloat(prompt("Sensibilidade:", sens)) || 0.007; };
+    document.getElementById('edit-hud-btn').onclick = () => {
+        isEditingHUD = !isEditingHUD;
+        document.getElementById('edit-hud-btn').innerText = isEditingHUD ? "✅ SALVAR" : "🔧 MOVER HUD";
+    };
+})();
