@@ -1,0 +1,186 @@
+(function() {
+    // 1. ESTILOS E INTERFACE (Mantendo o que você gostou)
+    if(document.getElementById('mobile-hud')) document.getElementById('mobile-hud').remove();
+    if(document.getElementById('jump-btn')) document.getElementById('jump-btn').style.display = 'none';
+
+    const style = document.createElement('style');
+    style.innerHTML = `
+        #mobile-hud { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10000; }
+        .touch-zone { pointer-events: auto; touch-action: none; }
+        
+        #joy-base { position: absolute; bottom: 40px; left: 40px; width: 120px; height: 120px; background: rgba(255,255,255,0.1); border: 2px solid #fff; border-radius: 50%; }
+        #joy-stick { position: absolute; top: 35px; left: 35px; width: 50px; height: 50px; background: #fff; border-radius: 50%; opacity: 0.8; pointer-events: none; }
+        #mobile-jump-btn { position: absolute; bottom: 40px; right: 40px; width: 100px; height: 100px; background: rgba(255,255,255,0.2); border: 3px solid #fff; border-radius: 50%; color: #fff; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 14px; }
+
+        .top-ctrl { position: absolute; top: 10px; padding: 10px; background: #000; color: #fff; border: 1px solid #fff; border-radius: 10px; font-size: 10px; font-weight: bold; }
+        #fs-btn { left: 50%; transform: translateX(-110%); }
+        #edit-hud-btn { left: 50%; transform: translateX(10%); }
+
+        /* Estilo para quando estiver redimensionando */
+        .resizing-active { 
+            border: 3px solid #00ff00 !important; 
+            box-shadow: 0 0 20px #00ff00 !important; 
+            z-index: 10001 !important;
+        }
+    `;
+    document.head.appendChild(style);
+
+    const hud = document.createElement('div');
+    hud.id = 'mobile-hud';
+    hud.innerHTML = `
+        <div id="joy-base" class="touch-zone"><div id="joy-stick"></div></div>
+        <div id="mobile-jump-btn" class="touch-zone">PULAR</div>
+        <button id="fs-btn" class="top-ctrl touch-zone">📺 FULLSCREEN</button>
+        <button id="edit-hud-btn" class="top-ctrl touch-zone">🔧 MOVER HUD</button>
+    `;
+    document.body.appendChild(hud);
+
+    // 2. LÓGICA DE REDIMENSIONAR (SEGURAR 1 SEGUNDO) - APLICA EM QUALQUER ELEMENTO
+    function addResizeLogic(el) {
+        let timer;
+        let isResizing = false;
+        let startX, startY, startW, startH;
+
+        el.addEventListener('touchstart', (e) => {
+            // Se estiver no modo de mover HUD, não tenta redimensionar
+            if(window.isEditingHUD) return;
+
+            timer = setTimeout(() => {
+                isResizing = true;
+                el.classList.add('resizing-active');
+                const t = e.touches[0];
+                startX = t.clientX;
+                startY = t.clientY;
+                startW = el.offsetWidth;
+                startH = el.offsetHeight;
+                // Feedback tátil leve se o celular suportar
+                if (navigator.vibrate) navigator.vibrate(50);
+            }, 1000); 
+        }, {passive: true});
+
+        el.addEventListener('touchmove', (e) => {
+            if (isResizing) {
+                const t = e.touches[0];
+                const newW = startW + (t.clientX - startX);
+                const newH = startH + (t.clientY - startY);
+                el.style.width = Math.max(newW, 40) + 'px';
+                el.style.height = Math.max(newH, 40) + 'px';
+                // Previne scroll enquanto redimensiona
+                if(e.cancelable) e.preventDefault();
+            } else {
+                clearTimeout(timer);
+            }
+        }, {passive: false});
+
+        el.addEventListener('touchend', () => {
+            clearTimeout(timer);
+            if(isResizing) {
+                isResizing = false;
+                el.classList.remove('resizing-active');
+            }
+        });
+    }
+
+    // 3. MOVER E SALVAR (MODO HUD)
+    function enableDrag(el, id) {
+        const saved = JSON.parse(localStorage.getItem('pos_v6_' + id));
+        if(saved) { el.style.left = saved.x; el.style.top = saved.y; el.style.bottom = 'auto'; el.style.right = 'auto'; }
+
+        el.addEventListener('touchstart', (e) => {
+            if(!window.isEditingHUD) return;
+            const t = e.touches[0];
+            let offX = t.clientX - el.offsetLeft;
+            let offY = t.clientY - el.offsetTop;
+
+            const move = (me) => {
+                const mt = me.touches[0];
+                el.style.left = (mt.clientX - offX) + 'px';
+                el.style.top = (mt.clientY - offY) + 'px';
+                el.style.bottom = 'auto'; el.style.right = 'auto';
+            };
+            const stop = () => {
+                document.removeEventListener('touchmove', move);
+                document.removeEventListener('touchend', stop);
+                localStorage.setItem('pos_v6_' + id, JSON.stringify({x: el.style.left, y: el.style.top}));
+            };
+            document.addEventListener('touchmove', move);
+            document.addEventListener('touchend', stop);
+        });
+    }
+
+    // 4. SCANNER DE ELEMENTOS (Pega Hack, Scripts Novos, etc.)
+    const scanUI = () => {
+        // Alvos: botões de UI, Painéis de Hack e os botões do HUD
+        const targets = document.querySelectorAll('.panel, .ui-btn, button, #mobile-jump-btn, #joy-base');
+        targets.forEach((el, i) => {
+            if(!el.dataset.mobileReady) {
+                addResizeLogic(el);
+                enableDrag(el, 'ui_v6_' + (el.id || i));
+                el.dataset.mobileReady = "true";
+                el.style.pointerEvents = "auto"; // Garante que responda ao toque
+            }
+        });
+    };
+    setInterval(scanUI, 1000); // Scaneia a tela a cada 1 segundo em busca de novos scripts
+
+    // 5. SISTEMA DE CONTROLES (Mantido)
+    document.getElementById('fs-btn').onclick = () => {
+        if (!document.fullscreenElement) document.documentElement.requestFullscreen();
+        else document.exitFullscreen();
+    };
+
+    document.getElementById('edit-hud-btn').onclick = () => {
+        window.isEditingHUD = !window.isEditingHUD;
+        document.getElementById('edit-hud-btn').innerText = window.isEditingHUD ? "✅ SALVAR" : "🔧 MOVER HUD";
+    };
+
+    let moveX = 0, moveZ = 0;
+    const base = document.getElementById('joy-base');
+    const stick = document.getElementById('joy-stick');
+
+    base.addEventListener('touchmove', (e) => {
+        if(window.isEditingHUD) return;
+        e.preventDefault();
+        const t = e.touches[0];
+        const rect = base.getBoundingClientRect();
+        const cx = rect.left + rect.width / 2;
+        const cy = rect.top + rect.height / 2;
+        let dx = t.clientX - cx;
+        let dy = t.clientY - cy;
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        const max = 50; 
+        if(dist > max) { dx *= max/dist; dy *= max/dist; }
+        stick.style.transform = `translate(${dx}px, ${dy}px)`;
+        moveX = dx / max; moveZ = dy / max;
+        keys['KeyW'] = moveZ < -0.3; keys['KeyS'] = moveZ > 0.3;
+        keys['KeyA'] = moveX < -0.3; keys['KeyD'] = moveX > 0.3;
+    }, {passive: false});
+
+    base.addEventListener('touchend', () => {
+        stick.style.transform = `translate(0,0)`;
+        keys['KeyW'] = keys['KeyS'] = keys['KeyA'] = keys['KeyD'] = false;
+    });
+
+    let lastTX = 0;
+    document.addEventListener('touchstart', (e) => { if(e.touches[0].clientX > window.innerWidth/2) lastTX = e.touches[0].clientX; });
+    document.addEventListener('touchmove', (e) => {
+        if(e.touches[0].clientX > window.innerWidth/2 && !window.isEditingHUD) {
+            let dx = e.touches[0].clientX - lastTX;
+            if(window.camRot !== undefined) window.camRot -= dx * 0.006;
+            lastTX = e.touches[0].clientX;
+        }
+    });
+
+    document.getElementById('mobile-jump-btn').ontouchstart = (e) => {
+        e.preventDefault();
+        if(!window.isEditingHUD && window.jump) window.jump();
+    };
+
+    window.addEventListener('resize', () => {
+        if(window.renderer && window.camera) {
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+        }
+    });
+})();
