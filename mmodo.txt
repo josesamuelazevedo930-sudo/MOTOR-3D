@@ -1,0 +1,164 @@
+(function() {
+    // 1. ESTILOS DE INTERFACE E REDIMENSIONAMENTO
+    const style = document.createElement('style');
+    style.innerHTML = `
+        /* Permitir redimensionar painéis e elementos */
+        .panel, .ui-btn, #jump-btn, #mobile-joy-container {
+            resize: both;
+            overflow: auto !important;
+            touch-action: none;
+        }
+
+        /* Joystick Visual */
+        #mobile-joy-container {
+            position: absolute;
+            bottom: 40px;
+            left: 40px;
+            width: 120px;
+            height: 120px;
+            background: rgba(255,255,255,0.15);
+            border: 2px solid #fff;
+            border-radius: 50%;
+            z-index: 9999;
+        }
+        #mobile-joy-stick {
+            position: absolute;
+            top: 35px;
+            left: 35px;
+            width: 50px;
+            height: 50px;
+            background: #fff;
+            border-radius: 50%;
+            pointer-events: none;
+        }
+
+        /* Botão Fullscreen Superior */
+        #fs-master-btn {
+            position: absolute;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 10001;
+            padding: 8px 15px;
+            background: #000;
+            color: #fff;
+            border: 2px solid #fff;
+            border-radius: 20px;
+            font-size: 10px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+    `;
+    document.head.appendChild(style);
+
+    // 2. FUNÇÃO FULLSCREEN REAL
+    const fsBtn = document.createElement('button');
+    fsBtn.id = 'fs-master-btn';
+    fsBtn.innerText = "📺 TELA CHEIA (FULLSCREEN)";
+    document.body.appendChild(fsBtn);
+
+    fsBtn.onclick = () => {
+        if (!document.fullscreenElement) {
+            document.documentElement.requestFullscreen().catch(err => {
+                alert(`Erro ao ativar Fullscreen: ${err.message}`);
+            });
+            fsBtn.innerText = "📺 SAIR DA TELA CHEIA";
+        } else {
+            document.exitFullscreen();
+            fsBtn.innerText = "📺 TELA CHEIA (FULLSCREEN)";
+        }
+    };
+
+    // 3. SISTEMA DE ARRASTAR (DRAG & DROP) PARA TUDO
+    function enableDrag(el) {
+        let isDragging = false;
+        let currentX, currentY, initialX, initialY;
+
+        el.addEventListener("touchstart", (e) => {
+            // Se clicar na borda de redimensionamento, não arrasta
+            const rect = el.getBoundingClientRect();
+            if (e.touches[0].clientX > rect.right - 20 && e.touches[0].clientY > rect.bottom - 20) return;
+
+            initialX = e.touches[0].clientX - el.offsetLeft;
+            initialY = e.touches[0].clientY - el.offsetTop;
+            isDragging = true;
+        }, {passive: true});
+
+        document.addEventListener("touchmove", (e) => {
+            if (!isDragging) return;
+            currentX = e.touches[0].clientX - initialX;
+            currentY = e.touches[0].clientY - initialY;
+            el.style.left = currentX + "px";
+            el.style.top = currentY + "px";
+            el.style.bottom = "auto";
+            el.style.right = "auto";
+        }, {passive: false});
+
+        document.addEventListener("touchend", () => { isDragging = false; });
+    }
+
+    // Aplicar arraste em todos os elementos principais
+    document.querySelectorAll('.panel').forEach(enableDrag);
+    document.querySelectorAll('.ui-btn').forEach(enableDrag);
+    enableDrag(document.getElementById('jump-btn'));
+
+    // 4. JOYSTICK PARA MOVIMENTAÇÃO
+    const joyContainer = document.createElement('div');
+    joyContainer.id = 'mobile-joy-container';
+    const joyStick = document.createElement('div');
+    joyStick.id = 'mobile-joy-stick';
+    joyContainer.appendChild(joyStick);
+    document.body.appendChild(joyContainer);
+    enableDrag(joyContainer);
+
+    let moveX = 0, moveZ = 0, moving = false;
+
+    joyContainer.addEventListener('touchstart', (e) => { moving = true; }, {passive: true});
+    joyContainer.addEventListener('touchmove', (e) => {
+        e.preventDefault();
+        const touch = e.touches[0];
+        const rect = joyContainer.getBoundingClientRect();
+        const centerX = rect.left + rect.width / 2;
+        const centerY = rect.top + rect.height / 2;
+        
+        let dx = touch.clientX - centerX;
+        let dy = touch.clientY - centerY;
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        const maxDist = 45;
+
+        if (dist > maxDist) {
+            dx *= maxDist / dist;
+            dy *= maxDist / dist;
+        }
+
+        joyStick.style.transform = `translate(${dx}px, ${dy}px)`;
+        
+        // Seta as variáveis que o seu script original usa
+        moveX = dx / maxDist;
+        moveZ = dy / maxDist;
+
+        // Simula as teclas para o seu motor original entender
+        window.keys['KeyW'] = moveZ < -0.3;
+        window.keys['KeyS'] = moveZ > 0.3;
+        window.keys['KeyA'] = moveX < -0.3;
+        window.keys['KeyD'] = moveX > 0.3;
+    }, {passive: false});
+
+    joyContainer.addEventListener('touchend', () => {
+        moving = false;
+        joyStick.style.transform = `translate(0,0)`;
+        window.keys['KeyW'] = false; window.keys['KeyS'] = false;
+        window.keys['KeyA'] = false; window.keys['KeyD'] = false;
+    });
+
+    // 5. CORREÇÃO AUTOMÁTICA DE TELA (RESIZE)
+    window.addEventListener('resize', () => {
+        if (window.renderer && window.camera) {
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+        }
+    });
+
+    console.log("Siri Cascudo Mobile Pro Ativado!");
+})();
