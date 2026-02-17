@@ -1,0 +1,138 @@
+(function() {
+    // 1. ESTILOS E INTERFACE (HUD)
+    if(document.getElementById('mobile-hud')) document.getElementById('mobile-hud').remove();
+    if(document.getElementById('jump-btn')) document.getElementById('jump-btn').style.display = 'none';
+
+    const style = document.createElement('style');
+    style.innerHTML = `
+        #mobile-hud { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10000; font-family: sans-serif; }
+        .touch-zone { pointer-events: auto; touch-action: none; }
+        
+        /* Controles */
+        #joy-base { position: absolute; bottom: 40px; left: 40px; width: 120px; height: 120px; background: rgba(255,255,255,0.1); border: 2px solid #fff; border-radius: 50%; }
+        #joy-stick { position: absolute; top: 35px; left: 35px; width: 50px; height: 50px; background: #fff; border-radius: 50%; opacity: 0.8; }
+        #mobile-jump-btn { position: absolute; bottom: 40px; right: 40px; width: 100px; height: 100px; background: rgba(255,255,255,0.2); border: 3px solid #fff; border-radius: 50%; color: #fff; display: flex; align-items: center; justify-content: center; font-weight: bold; }
+
+        /* Barra de Sistema Superior */
+        .top-btn { position: absolute; top: 10px; padding: 10px; background: #000; color: #fff; border: 1px solid #fff; border-radius: 8px; font-size: 10px; pointer-events: auto; }
+        #fs-btn { left: 10px; }
+        #sens-btn { left: 100px; }
+        #edit-btn { right: 10px; background: #ff00ff; }
+
+        /* Estilo para Redimensionar (Segurar) */
+        .resizing { border: 2px solid #00ff00 !important; }
+        .panel { border: 1px solid #fff !important; min-width: 50px; min-height: 50px; overflow: hidden; }
+        #camera-zone { position: absolute; top: 0; right: 0; width: 50%; height: 100%; z-index: 9998; pointer-events: auto; }
+    `;
+    document.head.appendChild(style);
+
+    const hud = document.createElement('div');
+    hud.id = 'mobile-hud';
+    hud.innerHTML = `
+        <div id="camera-zone"></div>
+        <div id="joy-base" class="touch-zone"> <div id="joy-stick"></div> </div>
+        <div id="mobile-jump-btn" class="touch-zone">PULAR</div>
+        <button id="fs-btn" class="top-btn">📺 FULL</button>
+        <button id="sens-btn" class="top-btn">⚙️ SENS</button>
+        <button id="edit-btn" class="top-btn">🔧 MOVER</button>
+    `;
+    document.body.appendChild(hud);
+
+    // 2. SISTEMA DE CLICAR E SEGURAR PARA REDIMENSIONAR
+    function enableSmartResize(el) {
+        let pressTimer;
+        let isResizing = false;
+
+        el.addEventListener('touchstart', (e) => {
+            pressTimer = window.setTimeout(() => {
+                isResizing = true;
+                el.classList.add('resizing');
+                alert("Modo Redimensionar Ativado: Arraste para mudar o tamanho.");
+            }, 1000); // Segura 1 segundo para redimensionar
+        });
+
+        el.addEventListener('touchmove', (e) => {
+            if (isResizing) {
+                const t = e.touches[0];
+                el.style.width = (t.clientX - el.offsetLeft) + 'px';
+                el.style.height = (t.clientY - el.offsetTop) + 'px';
+            }
+        });
+
+        el.addEventListener('touchend', () => {
+            clearTimeout(pressTimer);
+            isResizing = false;
+            el.classList.remove('resizing');
+        });
+    }
+
+    // 3. JOYSTICK E MOVIMENTAÇÃO
+    let moveX = 0, moveZ = 0, sens = 0.007;
+    const base = document.getElementById('joy-base');
+    const stick = document.getElementById('joy-stick');
+
+    base.addEventListener('touchmove', (e) => {
+        if(window.isEditing) return;
+        const t = e.touches[0];
+        const rect = base.getBoundingClientRect();
+        const cx = rect.left + rect.width / 2;
+        const cy = rect.top + rect.height / 2;
+        let dx = t.clientX - cx; let dy = t.clientY - cy;
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        const max = rect.width / 2.2;
+        if(dist > max) { dx *= max/dist; dy *= max/dist; }
+        stick.style.transform = `translate(${dx}px, ${dy}px)`;
+        moveX = dx / max; moveZ = dy / max;
+        keys['KeyW'] = moveZ < -0.3; keys['KeyS'] = moveZ > 0.3;
+        keys['KeyA'] = moveX < -0.3; keys['KeyD'] = moveX > 0.3;
+    });
+
+    base.addEventListener('touchend', () => {
+        stick.style.transform = `translate(0,0)`;
+        keys['KeyW'] = keys['KeyS'] = keys['KeyA'] = keys['KeyD'] = false;
+    });
+
+    // 4. CÂMERA (LADO DIREITO) E PULO
+    let lastX = 0;
+    document.getElementById('camera-zone').ontouchstart = (e) => { lastX = e.touches[0].clientX; };
+    document.getElementById('camera-zone').ontouchmove = (e) => {
+        let dx = e.touches[0].clientX - lastX;
+        if(window.camRot !== undefined) window.camRot -= dx * sens;
+        lastX = e.touches[0].clientX;
+    };
+
+    document.getElementById('mobile-jump-btn').ontouchstart = () => { if(window.jump) window.jump(); };
+
+    // 5. SISTEMA DE MOVER E CONFIGURAR
+    function makeDraggable(el) {
+        el.addEventListener('touchstart', (e) => {
+            if(!window.isEditing) return;
+            let offX = e.touches[0].clientX - el.offsetLeft;
+            let offY = e.touches[0].clientY - el.offsetTop;
+            const move = (m) => {
+                el.style.left = (m.touches[0].clientX - offX) + 'px';
+                el.style.top = (m.touches[0].clientY - offY) + 'px';
+                el.style.bottom = 'auto'; el.style.right = 'auto';
+            };
+            const stop = () => {
+                document.removeEventListener('touchmove', move);
+                document.removeEventListener('touchend', stop);
+            };
+            document.addEventListener('touchmove', move);
+            document.addEventListener('touchend', stop);
+        });
+    }
+
+    document.getElementById('fs-btn').onclick = () => { document.documentElement.requestFullscreen(); };
+    document.getElementById('sens-btn').onclick = () => { sens = parseFloat(prompt("Sensibilidade:", sens)) || 0.007; };
+    document.getElementById('edit-btn').onclick = () => { 
+        window.isEditing = !window.isEditing; 
+        document.getElementById('edit-btn').innerText = window.isEditing ? "✅ SALVAR" : "🔧 MOVER";
+    };
+
+    // Aplicar funções
+    [base, document.getElementById('mobile-jump-btn')].forEach(el => { makeDraggable(el); enableSmartResize(el); });
+    setInterval(() => { document.querySelectorAll('.panel').forEach(p => { if(!p.dataset.ready){ makeDraggable(p); enableSmartResize(p); p.dataset.ready=true; } }); }, 1000);
+
+    alert("CONTROLES PRONTOS:\n- Segure 1s para Redimensionar\n- Botão MOVER para mudar posição\n- Lado direito gira câmera");
+})();
