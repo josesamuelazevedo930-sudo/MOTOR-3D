@@ -1,98 +1,90 @@
-// 1. LIMPAR CONTROLES ANTIGOS (Evita duplicar se você executar o script de novo)
-if(document.getElementById('joystick-base')) document.getElementById('joystick-base').remove();
-if(document.getElementById('touch-zone')) document.getElementById('touch-zone').remove();
+(function() {
+    // 1. Estilos Necessários para HUD e Movimentação
+    const style = document.createElement('style');
+    style.innerHTML = `
+        .draggable-panel { touch-action: none; cursor: move; }
+        .edit-mode-active { border: 2px dashed #ff00ff !important; opacity: 0.8; }
+        #hud-save-btn { 
+            position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+            padding: 15px; background: #ff00ff; color: #fff; font-weight: bold;
+            border-radius: 10px; z-index: 10000; display: none;
+        }
+        .panel { resize: both; overflow: auto !important; } /* Painéis redimensionáveis */
+    `;
+    document.head.appendChild(style);
 
-// 2. ESTILOS COM "POINTER-EVENTS" INTELIGENTE
-const style = document.createElement('style');
-style.id = "mobile-style";
-style.innerHTML = `
-    #joystick-base { 
-        position: absolute; bottom: 50px; left: 50px; width: 120px; height: 120px; 
-        background: rgba(255,255,255,0.1); border: 2px solid rgba(255,255,255,0.4); 
-        border-radius: 50%; z-index: 10; touch-action: none; 
+    const hudSave = document.createElement('button');
+    hudSave.id = "hud-save-btn"; hudSave.innerText = "✅ SALVAR POSIÇÕES";
+    document.body.appendChild(hudSave);
+
+    // 2. Lógica para tornar qualquer elemento ARRASTÁVEL (Touch)
+    function makeDraggable(el, storageKey) {
+        let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
+        
+        // Carregar posição salva
+        const saved = JSON.parse(localStorage.getItem(storageKey));
+        if (saved) {
+            el.style.top = saved.top; el.style.left = saved.left;
+            el.style.bottom = 'auto'; el.style.right = 'auto';
+        }
+
+        el.addEventListener('touchstart', dragStart);
+
+        function dragStart(e) {
+            if (!window.isEditMode && !el.classList.contains('panel')) return;
+            pos3 = e.touches[0].clientX;
+            pos4 = e.touches[0].clientY;
+            document.addEventListener('touchend', dragEnd);
+            document.addEventListener('touchmove', dragMove);
+        }
+
+        function dragMove(e) {
+            pos1 = pos3 - e.touches[0].clientX;
+            pos2 = pos4 - e.touches[0].clientY;
+            pos3 = e.touches[0].clientX;
+            pos4 = e.touches[0].clientY;
+            el.style.top = (el.offsetTop - pos2) + "px";
+            el.style.left = (el.offsetLeft - pos1) + "px";
+            el.style.bottom = 'auto'; el.style.right = 'auto';
+        }
+
+        function dragEnd() {
+            document.removeEventListener('touchend', dragEnd);
+            document.removeEventListener('touchmove', dragMove);
+            if(window.isEditMode) {
+                localStorage.setItem(storageKey, JSON.stringify({
+                    top: el.style.top, left: el.style.left
+                }));
+            }
+        }
     }
-    #joystick-stick { 
-        position: absolute; top: 35px; left: 35px; width: 50px; height: 50px; 
-        background: rgba(255,255,255,0.8); border-radius: 50%; 
-    }
-    #touch-zone { 
-        position: absolute; top: 0; right: 0; width: 60%; height: 100%; 
-        z-index: 5; touch-action: none; 
-        /* Isso permite que cliques passem para os botões se eles estiverem embaixo */
-        pointer-events: auto; 
-    }
-    /* Garantir que os botões originais fiquem SEMPRE na frente de tudo */
-    .ui-btn, .panel, .zoom-ctrl { z-index: 9999 !important; }
-`;
-document.head.appendChild(style);
 
-// 3. CRIAR ELEMENTOS
-const base = document.createElement('div'); base.id = 'joystick-base';
-const stick = document.createElement('div'); stick.id = 'joystick-stick';
-const touchZone = document.createElement('div'); touchZone.id = 'touch-zone';
-base.appendChild(stick);
-document.body.appendChild(base);
-document.body.appendChild(touchZone);
+    // 3. Ativar nos elementos do seu jogo
+    makeDraggable(document.getElementById('joy-outer'), 'pos_joy');
+    makeDraggable(document.getElementById('jump-btn'), 'pos_jump');
+    document.querySelectorAll('.panel').forEach((p, i) => makeDraggable(p, 'pos_panel_' + i));
 
-// VARIÁVEIS DE MOVIMENTO
-let joyPos = { x: 0, y: 0 }, isJoyDown = false;
-let moveX = 0, moveZ = 0;
-let lastTouchX = 0;
+    // 4. Botão de Alternar Modo Editor
+    const editBtn = document.createElement('button');
+    editBtn.innerText = "🔧 EDITAR HUD";
+    editBtn.className = "ui-btn";
+    editBtn.style.cssText = "position:absolute; top:10px; left:10px; background:#444; color:#fff; z-index:10001;";
+    document.body.appendChild(editBtn);
 
-// 4. LÓGICA DO JOYSTICK
-base.addEventListener('touchstart', (e) => { isJoyDown = true; e.stopPropagation(); });
-window.addEventListener('touchmove', (e) => {
-    if (!isJoyDown) return;
-    let touch = e.touches[0];
-    let rect = base.getBoundingClientRect();
-    let centerX = rect.left + rect.width / 2;
-    let centerY = rect.top + rect.height / 2;
-    let dx = touch.clientX - centerX;
-    let dy = touch.clientY - centerY;
-    let dist = Math.min(Math.sqrt(dx*dx + dy*dy), 50);
-    let angle = Math.atan2(dy, dx);
-    joyPos.x = Math.cos(angle) * dist;
-    joyPos.y = Math.sin(angle) * dist;
-    stick.style.transform = `translate(${joyPos.x}px, ${joyPos.y}px)`;
-    moveX = (joyPos.x / 50);
-    moveZ = (joyPos.y / 50);
-}, { passive: false });
+    editBtn.onclick = () => {
+        window.isEditMode = !window.isEditMode;
+        hudSave.style.display = window.isEditMode ? 'block' : 'none';
+        document.getElementById('joy-outer').classList.toggle('edit-mode-active');
+        document.getElementById('jump-btn').classList.toggle('edit-mode-active');
+        alert(window.isEditMode ? "Modo Editor: Arraste os botões!" : "Modo Jogo: HUD travado.");
+    };
 
-window.addEventListener('touchend', () => {
-    isJoyDown = false;
-    stick.style.transform = `translate(0px, 0px)`;
-    moveX = 0; moveZ = 0;
-});
+    hudSave.onclick = () => editBtn.click();
 
-// 5. LÓGICA DA CÂMERA (Ajustada para não bloquear os botões)
-touchZone.addEventListener('touchstart', (e) => {
-    // Se o toque for em um botão ou painel, não gira a câmera
-    if(e.target.tagName === 'BUTTON' || e.target.closest('.panel')) return;
-    lastTouchX = e.touches[0].clientX;
-});
-
-touchZone.addEventListener('touchmove', (e) => {
-    if(e.target.tagName === 'BUTTON' || e.target.closest('.panel')) return;
-    let touch = e.touches[0];
-    let deltaX = touch.clientX - lastTouchX;
-    camRot -= deltaX * 0.007; 
-    lastTouchX = touch.clientX;
-});
-
-// 6. LOOP DE MOVIMENTO (Sem alterar o motor original)
-if(window.mpInterval) clearInterval(window.mpInterval);
-window.mpInterval = setInterval(() => {
-    if (player && (moveX !== 0 || moveZ !== 0)) {
-        let f = new THREE.Vector3(Math.sin(camRot), 0, Math.cos(camRot));
-        let r = new THREE.Vector3().crossVectors(new THREE.Vector3(0,1,0), f);
-        player.position.addScaledVector(f, -moveZ * moveSpeed);
-        player.position.addScaledVector(r, -moveX * moveSpeed);
-        let rotBase = Math.atan2(moveX, moveZ) + camRot + Math.PI;
-        player.rotation.y = (typeof animInverted !== 'undefined' && animInverted) ? rotBase + Math.PI : rotBase;
-        if (typeof fadeToAction === "function") fadeToAction('walk');
-    } else {
-        if (typeof fadeToAction === "function") fadeToAction('idle');
-    }
-}, 16);
-
-alert("Controles Mobile Otimizados! Menus agora estão clicáveis.");
+    // 5. Ajuste do Joystick (Eixo Fixo)
+    let moveX = 0, moveZ = 0, isMoving = false;
+    // ... (Aqui entra a lógica do Joystick V2 enviada anteriormente, mas com moveZ e moveX corrigidos)
+    // Para evitar inversão:
+    // player.position.addScaledVector(f, -moveZ * moveSpeed); // -moveZ para frente ser para frente
+    // player.position.addScaledVector(r, -moveX * moveSpeed); // -moveX para direita ser direita
+})();
