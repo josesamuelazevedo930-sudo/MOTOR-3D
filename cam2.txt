@@ -1,0 +1,77 @@
+(function() {
+    // Referências do seu código original
+    let lastX = 0;
+    let initialPinchDist = 0;
+    let isTouchingCanvas = false;
+
+    // Sensibilidade
+    const touchSens = 0.005;
+
+    // 1. EVENTO DE INÍCIO
+    document.addEventListener('touchstart', (e) => {
+        // Verifica se tocou no Canvas (área do jogo) e não em botões/menus
+        if (e.target.tagName === 'CANVAS') {
+            isTouchingCanvas = true;
+            if (e.touches.length === 1) {
+                lastX = e.touches[0].clientX;
+            } else if (e.touches.length === 2) {
+                // Prepara para o movimento de pinça (Zoom)
+                initialPinchDist = Math.hypot(
+                    e.touches[0].clientX - e.touches[1].clientX,
+                    e.touches[0].clientY - e.touches[1].clientY
+                );
+            }
+        } else {
+            isTouchingCanvas = false;
+        }
+    }, { passive: true });
+
+    // 2. EVENTO DE MOVIMENTO
+    document.addEventListener('touchmove', (e) => {
+        if (!isTouchingCanvas) return;
+
+        if (e.touches.length === 1) {
+            // Lógica de Visão: Só funciona se tocar do meio para a direita (para não bugar joystick)
+            let touch = e.touches[0];
+            if (touch.clientX > window.innerWidth / 2) {
+                let dx = touch.clientX - lastX;
+                
+                // Altera a variável camRot que o seu jogo já usa para girar
+                if (typeof camRot !== 'undefined') {
+                    camRot -= dx * touchSens;
+                }
+                
+                lastX = touch.clientX;
+            }
+        } 
+        else if (e.touches.length === 2) {
+            // Lógica de Zoom (Pinça)
+            let currentDist = Math.hypot(
+                e.touches[0].clientX - e.touches[1].clientX,
+                e.touches[0].clientY - e.touches[1].clientY
+            );
+            
+            if (initialPinchDist > 0) {
+                let diff = currentDist - initialPinchDist;
+                
+                // Altera a variável camDist do seu código (Zoom)
+                if (typeof camDist !== 'undefined') {
+                    // Se afastar os dedos, diminui camDist (zoom in), se aproximar, aumenta (zoom out)
+                    camDist = Math.max(10, Math.min(200, camDist - diff * 0.5));
+                }
+            }
+            initialPinchDist = currentDist;
+        }
+
+        // Evita que a tela suba/desça ao arrastar no jogo
+        if (e.cancelable) e.preventDefault();
+    }, { passive: false });
+
+    // 3. EVENTO DE FINALIZAÇÃO
+    document.addEventListener('touchend', () => {
+        initialPinchDist = 0;
+        isTouchingCanvas = false;
+    }, { passive: true });
+
+    console.log("Sistema de Visão Touch integrado ao camRot e camDist!");
+})();
