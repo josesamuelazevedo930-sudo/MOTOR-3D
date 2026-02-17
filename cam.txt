@@ -1,0 +1,80 @@
+(function() {
+    // Configurações de sensibilidade
+    let sensX = 0.005;
+    let sensY = 0.005;
+    let zoomSens = 0.5;
+
+    let lastX = 0;
+    let lastY = 0;
+    let initialPinchDist = 0;
+
+    // Detecta o início do toque
+    document.addEventListener('touchstart', (e) => {
+        if (e.target.tagName === 'CANVAS') {
+            if (e.touches.length === 1) {
+                // Registra posição inicial para movimento de um dedo (Visão)
+                lastX = e.touches[0].clientX;
+                lastY = e.touches[0].clientY;
+            } else if (e.touches.length === 2) {
+                // Registra distância inicial para movimento de dois dedos (Zoom/Pinça)
+                initialPinchDist = Math.hypot(
+                    e.touches[0].clientX - e.touches[1].clientX,
+                    e.touches[0].clientY - e.touches[1].clientY
+                );
+            }
+        }
+    }, { passive: true });
+
+    // Processa o movimento
+    document.addEventListener('touchmove', (e) => {
+        if (e.target.tagName !== 'CANVAS') return;
+
+        if (e.touches.length === 1) {
+            // Lógica de Visão (Apenas no lado direito da tela para não bugar o joystick)
+            let touch = e.touches[0];
+            if (touch.clientX > window.innerWidth / 3) { 
+                let dx = touch.clientX - lastX;
+                let dy = touch.clientY - lastY;
+
+                // Rotaciona Horizontal (Eixo Y do mundo)
+                if (window.camRot !== undefined) {
+                    window.camRot -= dx * sensX;
+                }
+                
+                // Rotaciona Vertical (Tilt/Olhar para cima e baixo)
+                if (window.camTilt !== undefined) {
+                    window.camTilt = Math.max(-1.5, Math.min(1.5, window.camTilt - dy * sensY));
+                }
+
+                lastX = touch.clientX;
+                lastY = touch.clientY;
+            }
+        } 
+        else if (e.touches.length === 2) {
+            // Lógica de Zoom (Pinça)
+            let currentDist = Math.hypot(
+                e.touches[0].clientX - e.touches[1].clientX,
+                e.touches[0].clientY - e.touches[1].clientY
+            );
+            
+            if (initialPinchDist > 0) {
+                let delta = currentDist - initialPinchDist;
+                if (window.camera && window.camera.fov) {
+                    // Ajusta o FOV da câmera (Zoom)
+                    window.camera.fov = Math.max(20, Math.min(100, window.camera.fov - (delta * zoomSens * 0.1)));
+                    window.camera.updateProjectionMatrix();
+                }
+            }
+            initialPinchDist = currentDist;
+        }
+
+        // Impede que o navegador tente "arrastar" a página ou dar refresh
+        if (e.cancelable) e.preventDefault();
+    }, { passive: false });
+
+    document.addEventListener('touchend', () => {
+        initialPinchDist = 0;
+    }, { passive: true });
+
+    console.log("Controle de Visão e Zoom injetado com sucesso.");
+})();
