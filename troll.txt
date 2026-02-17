@@ -1,0 +1,98 @@
+// NEXUS MULTI-HACK FE - ADAPTADO PARA SIRI MULTI V8
+(function() {
+    if(document.getElementById('nexus-troll-gui')) document.getElementById('nexus-troll-gui').remove();
+
+    const gui = document.createElement('div');
+    gui.id = 'nexus-troll-gui';
+    gui.style.cssText = `
+        position: absolute; top: 20px; left: 300px; width: 200px;
+        background: rgba(0,0,0,0.9); border: 2px solid #fff;
+        border-radius: 10px; color: white; font-family: 'Courier New', monospace;
+        z-index: 2000; padding: 12px; box-shadow: 0 0 20px rgba(255,255,255,0.3);
+    `;
+
+    gui.innerHTML = `
+        <div style="text-align:center; font-weight:bold; border-bottom:1px solid #fff; padding-bottom:5px; margin-bottom:10px;">NEXUS TROLL V8</div>
+        
+        <button class="hack-btn" onclick="sendGlobalAlert()">📢 MENSAGEM GLOBAL</button>
+        <button class="hack-btn" onclick="killAllRemote()">💀 KILL ALL (CLIENT)</button>
+        <button class="hack-btn" onclick="voidAllRemote()">🕳️ SEND TO VOID</button>
+        <button class="hack-btn" onclick="freezeAllRemote()">❄️ FREEZE PLAYERS</button>
+        <button class="hack-btn" onclick="lagServer()">🌀 LAG SIMULATOR</button>
+
+        <style>
+            .hack-btn {
+                width: 100%; background: #000; color: #fff; border: 1px solid #fff;
+                padding: 10px; margin-bottom: 6px; cursor: pointer; font-size: 10px;
+                font-weight: bold; text-transform: uppercase;
+            }
+            .hack-btn:hover { background: #fff; color: #000; }
+        </style>
+    `;
+
+    document.body.appendChild(gui);
+
+    // --- LÓGICA DE HACK ---
+
+    // 1. Mandar mensagem via Chat MQTT para todos
+    window.sendGlobalAlert = function() {
+        const msg = prompt("Digite a mensagem de erro para os players:");
+        if(msg && window.client) {
+            window.client.publish('siri/multi/' + window.sala, JSON.stringify({
+                type: 'chat', 
+                id: "SYSTEM_ERROR", 
+                text: "⚠️ " + msg.toUpperCase() 
+            }));
+        }
+    };
+
+    // 2. Mata os players localmente (eles somem da sua tela)
+    window.killAllRemote = function() {
+        let count = 0;
+        for(let id in window.remotePlayers) {
+            const p = window.remotePlayers[id];
+            p.visible = false;
+            count++;
+        }
+        alert(count + " Players eliminados na sua visão.");
+    };
+
+    // 3. Joga os players para o vácuo (-500 de altura)
+    window.voidAllRemote = function() {
+        for(let id in window.remotePlayers) {
+            const p = window.remotePlayers[id];
+            p.targetPos.y = -500;
+        }
+    };
+
+    // 4. Congela a posição de todos (ignora os pacotes de movimento)
+    window.freezeAllRemote = function() {
+        window._nexusFrozen = !window._nexusFrozen;
+        const originalLerp = THREE.Vector3.prototype.lerp;
+        
+        if(window._nexusFrozen) {
+            alert("CONGELADO!");
+            // Substitui o lerp para não mover nada
+            THREE.Vector3.prototype.lerp = function() { return this; };
+        } else {
+            alert("DESCONGELADO!");
+            // Restaura o lerp original (necessário recarregar ou salvar o original)
+            location.reload(); 
+        }
+    };
+
+    // 5. Simula Lag (Teleporta players para posições aleatórias na sua tela)
+    window.lagServer = function() {
+        let iterations = 0;
+        const interval = setInterval(() => {
+            for(let id in window.remotePlayers) {
+                const p = window.remotePlayers[id];
+                p.position.x += (Math.random() - 0.5) * 20;
+                p.position.z += (Math.random() - 0.5) * 20;
+            }
+            iterations++;
+            if(iterations > 50) clearInterval(interval);
+        }, 50);
+    };
+
+})();
