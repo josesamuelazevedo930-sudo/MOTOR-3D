@@ -1,0 +1,96 @@
+(function() {
+    // 1. CONFIGURAÇÕES E TEXTURAS
+    const BLOCK_SIZE = 4;
+    const CHUNK_SIZE = 12; // Tamanho do mapa (aumente se a TV aguentar)
+    
+    // Cores simulando blocos
+    const colors = {
+        grass: 0x3d8c40,
+        dirt: 0x5d4037,
+        stone: 0x808080,
+        wood: 0x5d4037,
+        leaves: 0x2e7d32
+    };
+
+    // 2. CRIAÇÃO DO BLOCO (GEOMETRIA ÚNICA)
+    const geometry = new THREE.BoxGeometry(BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
+    
+    // Criamos um "InstancedMesh" para cada tipo de bloco (ALTA PERFORMANCE)
+    const blocksCount = CHUNK_SIZE * CHUNK_SIZE * 5; 
+    const meshes = {};
+    
+    Object.keys(colors).forEach(type => {
+        const material = new THREE.MeshLambertMaterial({ color: colors[type] });
+        meshes[type] = new THREE.InstancedMesh(geometry, material, blocksCount);
+        meshes[type].instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+        scene.add(meshes[type]);
+    });
+
+    let instanceIndices = { grass: 0, dirt: 0, stone: 0, wood: 0, leaves: 0 };
+
+    // 3. GERADOR DE MAPA PROCEDURAL (Simples para ser leve)
+    function generateMap() {
+        const dummy = new THREE.Object3D();
+        
+        for (let x = -CHUNK_SIZE; x < CHUNK_SIZE; x++) {
+            for (let z = -CHUNK_SIZE; z < CHUNK_SIZE; z++) {
+                
+                // Gerar relevo simples com seno/cosseno (substitui o ruído pesado)
+                const h = Math.floor(Math.sin(x * 0.5) * Math.cos(z * 0.5) * 2) + 2;
+
+                for (let y = 0; y <= h; y++) {
+                    let type = 'stone';
+                    if (y === h) type = 'grass';
+                    else if (y > h - 2) type = 'dirt';
+
+                    dummy.position.set(x * BLOCK_SIZE, y * BLOCK_SIZE, z * BLOCK_SIZE);
+                    dummy.updateMatrix();
+                    
+                    const mesh = meshes[type];
+                    mesh.setMatrixAt(instanceIndices[type]++, dummy.matrix);
+                }
+
+                // Chance de gerar uma árvore
+                if (Math.random() > 0.98 && x > -CHUNK_SIZE+2 && z > -CHUNK_SIZE+2) {
+                    createTree(x * BLOCK_SIZE, (h + 1) * BLOCK_SIZE, z * BLOCK_SIZE, dummy);
+                }
+            }
+        }
+
+        // Atualiza os blocos na tela
+        Object.values(meshes).forEach(m => m.instanceMatrix.needsUpdate = true);
+    }
+
+    function createTree(x, y, z, dummy) {
+        // Tronco
+        for(let i=0; i<3; i++) {
+            dummy.position.set(x, y + (i * BLOCK_SIZE), z);
+            dummy.updateMatrix();
+            meshes.wood.setMatrixAt(instanceIndices.wood++, dummy.matrix);
+        }
+        // Folhas
+        dummy.position.set(x, y + (3 * BLOCK_SIZE), z);
+        dummy.updateMatrix();
+        meshes.leaves.setMatrixAt(instanceIndices.leaves++, dummy.matrix);
+    }
+
+    // 4. LÓGICA DE QUEBRAR/COLOCAR (FUNÇÃO)
+    window.mineBlock = function() {
+        // Lógica de Raycast para detectar o bloco à frente do player
+        // No Minecraft real, você removeria a instância, aqui para TV, 
+        // apenas movemos o player para cima do mapa gerado.
+    };
+
+    // 5. INICIALIZAÇÃO
+    if (mapModel) scene.remove(mapModel); // Remove o Siri Cascudo se quiser apenas Minecraft
+    generateMap();
+    
+    // Posiciona o player no topo do mapa
+    if (player) {
+        player.position.set(0, 40, 0);
+        grounded = false;
+        velY = 0;
+    }
+
+    console.log("Modo Minecraft Ativado: Voxel Instancing rodando.");
+})();
