@@ -1,0 +1,98 @@
+// --- CONFIGURAÇÃO INICIAL ---
+let blockSize = 10; // Tamanho do bloco compatível com sua escala
+let inventory = ["#689928", "#8B4513", "#808080", "#FFD700"]; // Grama, Terra, Pedra, Ouro
+let selectedIdx = 0;
+let ghostBlock; // Bloco fantasma para prever onde vai colocar
+
+// Criar o Bloco Fantasma (Preview)
+const ghostGeo = new THREE.BoxGeometry(blockSize, blockSize, blockSize);
+const ghostMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.4, wireframe: true });
+ghostBlock = new THREE.Mesh(ghostGeo, ghostMat);
+scene.add(ghostBlock);
+
+// --- INTERFACE DO INVENTÁRIO (UI) ---
+const invContainer = document.createElement('div');
+invContainer.style = "position:absolute; bottom:20px; left:50%; transform:translateX(-50%); display:flex; gap:10px; background:rgba(0,0,0,0.7); padding:10px; border-radius:10px; z-index:1001;";
+document.body.appendChild(invContainer);
+
+function updateInvUI() {
+    invContainer.innerHTML = "";
+    inventory.forEach((color, i) => {
+        let slot = document.createElement('div');
+        slot.style = `width:40px; height:40px; background:${color}; border: ${i === selectedIdx ? '4px solid white' : '2px solid #555'}; cursor:pointer;`;
+        slot.onclick = () => { selectedIdx = i; updateInvUI(); };
+        invContainer.appendChild(slot);
+    });
+}
+updateInvUI();
+
+// --- LÓGICA DE CONSTRUÇÃO ---
+const buildRaycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2(0, 0); // Centro da tela
+
+window.addEventListener('mousedown', (e) => {
+    if (e.button === 0) { // Clique Esquerdo: Colocar Bloco
+        placeBlock();
+    } else if (e.button === 2) { // Clique Direito: Remover Bloco
+        removeBlock();
+    }
+});
+
+function getLookAtPoint() {
+    buildRaycaster.setFromCamera(mouse, camera);
+    // Interectar o mapa e os blocos já colocados
+    let intersects = buildRaycaster.intersectObjects([mapModel, ...scene.children.filter(obj => obj.isBlock)], true);
+    return intersects[0];
+}
+
+function placeBlock() {
+    let hit = getLookAtPoint();
+    if (hit && hit.distance < 80) {
+        const geo = new THREE.BoxGeometry(blockSize, blockSize, blockSize);
+        const mat = new THREE.MeshPhongMaterial({ color: inventory[selectedIdx] });
+        const block = new THREE.Mesh(geo, mat);
+        block.isBlock = true; // Tag para identificar
+
+        // Posicionamento em Grade (Grid Snapping)
+        let pos = hit.point.clone().add(hit.face.normal.clone().multiplyScalar(blockSize/2));
+        block.position.set(
+            Math.round(pos.x / blockSize) * blockSize,
+            Math.round(pos.y / blockSize) * blockSize,
+            Math.round(pos.z / blockSize) * blockSize
+        );
+        
+        scene.add(block);
+    }
+}
+
+function removeBlock() {
+    let hit = getLookAtPoint();
+    if (hit && hit.object.isBlock && hit.distance < 80) {
+        scene.remove(hit.object);
+    }
+}
+
+// --- ATUALIZAÇÃO DO GHOST BLOCK ---
+function updateGhost() {
+    let hit = getLookAtPoint();
+    if (hit && hit.distance < 80) {
+        ghostBlock.visible = true;
+        let pos = hit.point.clone().add(hit.face.normal.clone().multiplyScalar(blockSize/2));
+        ghostBlock.position.set(
+            Math.round(pos.x / blockSize) * blockSize,
+            Math.round(pos.y / blockSize) * blockSize,
+            Math.round(pos.z / blockSize) * blockSize
+        );
+    } else {
+        ghostBlock.visible = false;
+    }
+}
+
+// Injetar no loop de animação existente
+const originalAnimate = window.animate;
+window.animate = function() {
+    updateGhost();
+    originalAnimate();
+};
+
+alert("MOD MINECRAFT ATIVADO!\nClique Esquerdo: Colocar\nClique Direito: Remover\nUse o inventário abaixo.");
