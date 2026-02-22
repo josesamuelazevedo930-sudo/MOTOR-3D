@@ -1,0 +1,72 @@
+(function() {
+    const lobbyImg = "https://github.com/josesamuelazevedo930-sudo/Imageees/raw/main/1771787535592.png";
+    const lobbyMusic = "https://github.com/josesamuelazevedo930-sudo/MP3/raw/main/%5BNon Copyrighted Music%5D _MiguelJohnson - Good Day To Die %5BEpic%5D(MP3_160K).mp3";
+
+    let inLobby = true;
+
+    // 1. FUNDO QUE PREENCHE A TELA INTEIRA
+    const lobbyOverlay = document.createElement('div');
+    lobbyOverlay.id = 'lobby-bg-full';
+    lobbyOverlay.style.cssText = `
+        position: fixed; inset: 0; 
+        background: url('${lobbyImg}') no-repeat center center;
+        background-size: cover; z-index: 1999;
+    `;
+    document.body.appendChild(lobbyOverlay);
+
+    // 2. BOTÃO START (MANTIDO)
+    const startBtn = document.createElement('button');
+    startBtn.innerText = "START";
+    startBtn.style.cssText = `
+        position: fixed; bottom: 30px; right: 30px;
+        width: 150px; height: 70px; background: #ffcc00; color: #000;
+        font-size: 22px; font-weight: 900; border: 5px solid #fff;
+        border-radius: 15px; cursor: pointer; z-index: 10000;
+    `;
+    document.body.appendChild(startBtn);
+
+    // 3. ÁUDIO
+    const audio = new Audio(lobbyMusic);
+    audio.loop = true;
+    const playAudio = () => audio.play().catch(() => {});
+    document.addEventListener('click', playAudio, { once: true });
+    playAudio();
+
+    // 4. LÓGICA DE CENA
+    if(mapModel) mapModel.visible = false;
+    if(player) {
+        player.position.set(0, -4, 0); // Ajustado para não afundar
+        player.rotation.y = Math.PI;
+    }
+
+    const originalAnimate = window.animate;
+    
+    function lobbyLoop() {
+        if(!inLobby) return;
+        requestAnimationFrame(lobbyLoop);
+        
+        let d = clock.getDelta();
+        if(mixer) mixer.update(d);
+
+        if(keys['ArrowLeft']) player.rotation.y += 0.05;
+        if(keys['ArrowRight']) player.rotation.y -= 0.05;
+
+        // Câmera posicionada para centralizar o personagem
+        camera.position.set(0, 0, 18);
+        camera.lookAt(0, 0, 0);
+        
+        renderer.setClearColor(0x000000, 0); // Fundo transparente para ver a imagem
+        renderer.render(scene, camera);
+    }
+    lobbyLoop();
+
+    startBtn.onclick = () => {
+        inLobby = false;
+        audio.pause();
+        startBtn.remove();
+        lobbyOverlay.remove();
+        if(mapModel) mapModel.visible = true;
+        window.animate = originalAnimate;
+        respawn();
+    };
+})();
