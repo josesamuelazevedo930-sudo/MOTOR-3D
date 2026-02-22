@@ -1,0 +1,146 @@
+(function() {
+    // 1. CONFIGURAÇÕES E IMPORTAÇÃO MQTT
+    const lobbyImg = "https://github.com/josesamuelazevedo930-sudo/Imageees/raw/main/1771787535592.png";
+    const lobbyMusic = "https://github.com/josesamuelazevedo930-sudo/MP3/raw/main/%5BNon Copyrighted Music%5D _MiguelJohnson - Good Day To Die %5BEpic%5D(MP3_160K).mp3";
+    
+    if(!window.mqtt) {
+        const s = document.createElement('script');
+        s.src = 'https://cdn.jsdelivr.net/npm/mqtt@4.1.0/dist/mqtt.min.js';
+        document.head.appendChild(s);
+    }
+
+    let inLobby = true;
+    let client, meuNome, sala = "Nexus1";
+    let remotePlayers = {};
+    const jScene = window.scene || scene;
+
+    // 2. FUNDO DO LOBBY (TELA CHEIA)
+    const lobbyOverlay = document.createElement('div');
+    lobbyOverlay.id = 'lobby-ui-full';
+    lobbyOverlay.style.cssText = `position:fixed; inset:0; background:url('${lobbyImg}') no-repeat center center; background-size:cover; z-index:1998;`;
+    document.body.appendChild(lobbyOverlay);
+
+    // 3. INTERFACE DE PLAYERS ONLINE (LOBBY)
+    const onlinePanel = document.createElement('div');
+    onlinePanel.style.cssText = "position:fixed; left:30px; top:30px; width:200px; background:rgba(0,0,0,0.8); border:2px solid #ffcc00; padding:15px; color:#fff; z-index:2001; border-radius:10px; font-family:sans-serif;";
+    onlinePanel.innerHTML = `<h4 style="margin:0; color:#ffcc00;">PLAYERS ONLINE</h4><hr><div id="player-list" style="font-size:12px; height:150px; overflow-y:auto;">Buscando...</div>`;
+    document.body.appendChild(onlinePanel);
+
+    // 4. BOTÃO START (CANTO DIREITO)
+    const startBtn = document.createElement('button');
+    startBtn.innerText = "START";
+    startBtn.style.cssText = "position:fixed; bottom:40px; right:40px; width:180px; height:90px; background:#ffcc00; color:#000; font-size:26px; font-weight:900; border:6px solid #fff; border-radius:15px; cursor:pointer; z-index:2001; box-shadow:0 10px 30px #000;";
+    document.body.appendChild(startBtn);
+
+    // 5. CHAT (ESCONDIDO NO LOBBY)
+    const chatUI = document.createElement('div');
+    chatUI.id = 'game-chat';
+    chatUI.style.cssText = "position:fixed; left:20px; bottom:20px; width:300px; background:rgba(0,10,30,0.9); border:2px solid #00ffff; border-radius:10px; padding:10px; display:none; z-index:2005; color:#00ffff;";
+    chatUI.innerHTML = `<div id="logs" style="height:100px; overflow-y:auto; font-size:11px; margin-bottom:5px;"></div><input id="m-in" style="width:75%; background:#000; color:#fff; border:1px solid #00ffff; padding:5px;"><button id="m-send" style="width:20%; background:#00ffff; border:none; margin-left:5px;">OK</button>`;
+    document.body.appendChild(chatUI);
+
+    // 6. LOGICA MULTIPLAYER (MQTT)
+    function connectMulti() {
+        meuNome = prompt("Seu Nick:", "Player" + Math.floor(Math.random()*999));
+        client = mqtt.connect('wss://broker.emqx.io:8084/mqtt');
+        
+        client.on('connect', () => {
+            client.subscribe('siri/multi/' + sala);
+            updatePlayerList();
+        });
+
+        client.on('message', (topic, msg) => {
+            const data = JSON.parse(msg.toString());
+            if(data.id === meuNome) return;
+
+            if(data.type === 'sync') {
+                if(!remotePlayers[data.id]) remotePlayers[data.id] = criarAvatarRemoto(data.id);
+                let p = remotePlayers[data.id];
+                p.position.set(data.x, data.y, data.z);
+                p.rotation.y = data.ry;
+                p.lastSeen = Date.now();
+                updatePlayerList();
+            }
+            if(data.type === 'chat') addLog(data.id, data.text);
+        });
+    }
+
+    function criarAvatarRemoto(id) {
+        const group = new THREE.Group();
+        loaderGLTF.load('https://threejs.org/examples/models/gltf/Soldier.glb', (gltf) => {
+            const m = gltf.scene; m.scale.set(8,8,8); group.add(m);
+        });
+        jScene.add(group);
+        return group;
+    }
+
+    function updatePlayerList() {
+        const list = document.getElementById('player-list');
+        let names = `<div>● ${meuNome} (Você)</div>`;
+        for(let id in remotePlayers) names += `<div>● ${id}</div>`;
+        list.innerHTML = names;
+    }
+
+    function addLog(n, t) {
+        const l = document.getElementById('logs');
+        l.innerHTML += `<div><b>${n}:</b> ${t}</div>`;
+        l.scrollTop = l.scrollHeight;
+    }
+
+    // 7. LOOP E CONFIG DO PLAYER NO LOBBY
+    const audio = new Audio(lobbyMusic); audio.loop = true;
+    if(mapModel) mapModel.visible = false;
+    if(player) {
+        player.position.set(0, -6, 0); 
+        player.scale.multiplyScalar(1.5); // PERSONAGEM MAIOR
+        player.renderOrder = 999;
+    }
+
+    const originalAnimate = window.animate;
+    function lobbyLoop() {
+        if(!inLobby) return;
+        requestAnimationFrame(lobbyLoop);
+        if(mixer) mixer.update(clock.getDelta());
+        if(keys['ArrowLeft']) player.rotation.y += 0.05;
+        if(keys['ArrowRight']) player.rotation.y -= 0.05;
+        camera.position.set(0, 0, 18);
+        camera.lookAt(0, 0, 0);
+        renderer.setClearColor(0x000000, 0);
+        renderer.render(scene, camera);
+    }
+
+    // SINCRONIZAÇÃO CONTÍNUA
+    setInterval(() => {
+        if(client && client.connected && player) {
+            client.publish('siri/multi/'+sala, JSON.stringify({
+                type: 'sync', id: meuNome, x: player.position.x, y: player.position.y, z: player.position.z, ry: player.rotation.y
+            }));
+        }
+    }, 100);
+
+    // 8. START GAME
+    startBtn.onclick = () => {
+        inLobby = false;
+        audio.pause();
+        lobbyOverlay.remove();
+        onlinePanel.remove();
+        startBtn.remove();
+        chatUI.style.display = 'block';
+        if(mapModel) mapModel.visible = true;
+        if(player) { player.renderOrder = 0; player.scale.divideScalar(1.5); }
+        window.animate = originalAnimate;
+        respawn();
+    };
+
+    document.getElementById('m-send').onclick = () => {
+        const i = document.getElementById('m-in');
+        if(i.value && client) {
+            client.publish('siri/multi/'+sala, JSON.stringify({type:'chat', id:meuNome, text:i.value}));
+            addLog("Eu", i.value); i.value = "";
+        }
+    };
+
+    connectMulti();
+    lobbyLoop();
+    document.addEventListener('click', () => audio.play(), {once:true});
+})();
