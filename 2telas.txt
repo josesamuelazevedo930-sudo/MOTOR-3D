@@ -1,0 +1,90 @@
+(function() {
+    // 1. CONFIGURAÇÃO DE TELA DIVIDIDA
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+
+    // Criar Câmera para o Jogador 2
+    const camera2 = new THREE.PerspectiveCamera(75, (width / 2) / height, 0.1, 1000);
+    
+    // 2. CRIAR O SEGUNDO PLAYER (CLONE)
+    let player2;
+    loaderGLTF.load('https://threejs.org/examples/models/gltf/Soldier.glb', (gltf) => {
+        player2 = gltf.scene;
+        player2.scale.set(8, 8, 8);
+        player2.position.set(5, 0, 5); // Nasce um pouco ao lado
+        scene.add(player2);
+        
+        // Mixer de animação para o Player 2
+        player2.mixer = new THREE.AnimationMixer(player2);
+        const action = player2.mixer.clipAction(gltf.animations[0]); // Idle/Walk
+        action.play();
+    });
+
+    // 3. MAPEAMENTO DO CONTROLE DA TV E TECLADO
+    const keys2 = {};
+    window.addEventListener('keydown', (e) => {
+        keys2[e.key] = true;
+        // Mapeamento numérico do controle da TV (Exemplo comum)
+        if(e.key === '2') keys2['ArrowUp'] = true;
+        if(e.key === '8') keys2['ArrowDown'] = true;
+        if(e.key === '4') keys2['ArrowLeft'] = true;
+        if(e.key === '6') keys2['ArrowRight'] = true;
+    });
+    window.addEventListener('keyup', (e) => {
+        keys2[e.key] = false;
+        if(e.key === '2') keys2['ArrowUp'] = false;
+        if(e.key === '8') keys2['ArrowDown'] = false;
+        if(e.key === '4') keys2['ArrowLeft'] = false;
+        if(e.key === '6') keys2['ArrowRight'] = false;
+    });
+
+    // 4. SOBRESCREVER O LOOP DE RENDERIZAÇÃO
+    window.animate = function() {
+        requestAnimationFrame(window.animate);
+        const delta = clock.getDelta();
+
+        // CONTROLE PLAYER 1 (WASD + F/H)
+        if(player) {
+            if(keys['w']) player.translateZ(0.2);
+            if(keys['s']) player.translateZ(-0.2);
+            if(keys['f']) player.rotation.y += 0.05;
+            if(keys['h']) player.rotation.y -= 0.05;
+            if(mixer) mixer.update(delta);
+
+            // Câmera 1 segue Player 1 (Lado Esquerdo)
+            camera.position.set(player.position.x, player.position.y + 10, player.position.z + 20);
+            camera.lookAt(player.position);
+        }
+
+        // CONTROLE PLAYER 2 (Setas / Controle TV + O/P)
+        if(player2) {
+            if(keys2['ArrowUp']) player2.translateZ(0.2);
+            if(keys2['ArrowDown']) player2.translateZ(-0.2);
+            if(keys2['ArrowLeft'] || keys2['4']) player2.rotation.y += 0.05;
+            if(keys2['ArrowRight'] || keys2['6']) player2.rotation.y -= 0.05;
+            if(keys2['o']) player2.rotation.y += 0.05; // Visão O
+            if(keys2['p']) player2.rotation.y -= 0.05; // Visão P
+            if(player2.mixer) player2.mixer.update(delta);
+
+            // Câmera 2 segue Player 2 (Lado Direito)
+            camera2.position.set(player2.position.x, player2.position.y + 10, player2.position.z + 20);
+            camera2.lookAt(player2.position);
+        }
+
+        // 5. RENDERIZAR AS DUAS TELAS
+        renderer.setScissorTest(true);
+
+        // Tela Esquerda (P1)
+        renderer.setViewport(0, 0, width / 2, height);
+        renderer.setScissor(0, 0, width / 2, height);
+        renderer.render(scene, camera);
+
+        // Tela Direita (P2)
+        renderer.setViewport(width / 2, 0, width / 2, height);
+        renderer.setScissor(width / 2, 0, width / 2, height);
+        renderer.render(scene, camera2);
+    };
+
+    console.log("Modo Split-Screen Local Ativado!");
+    console.log("P1: WASD | P2: Setas/Controle TV");
+})();
