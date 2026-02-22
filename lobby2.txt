@@ -1,0 +1,87 @@
+(function() {
+    // 1. CONFIGURAÇÕES
+    const lobbyImg = "https://github.com/josesamuelazevedo930-sudo/Imageees/raw/main/1771787535592.png";
+    const lobbyMusic = "https://github.com/josesamuelazevedo930-sudo/MP3/raw/main/%5BNon Copyrighted Music%5D _MiguelJohnson - Good Day To Die %5BEpic%5D(MP3_160K).mp3";
+
+    let inLobby = true;
+    let lobbyGroup = new THREE.Group();
+    scene.add(lobbyGroup);
+
+    // 2. FUNDO 3D (Para a imagem ficar sempre atrás do player)
+    const loader = new THREE.TextureLoader();
+    loader.load(lobbyImg, (texture) => {
+        const planeGeo = new THREE.PlaneGeometry(60, 35);
+        const planeMat = new THREE.MeshBasicMaterial({ map: texture, side: THREE.DoubleSide });
+        const backgroundPlane = new THREE.Mesh(planeGeo, planeMat);
+        backgroundPlane.position.set(0, 10, -20); // Atrás do player
+        lobbyGroup.add(backgroundPlane);
+    });
+
+    // 3. INTERFACE (Botão Start no Canto Inferior Direito)
+    const startBtn = document.createElement('button');
+    startBtn.id = "lobby-start-btn";
+    startBtn.innerText = "START";
+    startBtn.style.cssText = `
+        position: fixed; bottom: 30px; right: 30px;
+        width: 150px; height: 70px; background: #ffcc00; color: #000;
+        font-size: 22px; font-weight: 900; border: 5px solid #fff;
+        border-radius: 15px; cursor: pointer; z-index: 10000;
+        box-shadow: 0 0 20px rgba(0,0,0,0.5);
+    `;
+    document.body.appendChild(startBtn);
+
+    // 4. ÁUDIO
+    const audio = new Audio(lobbyMusic);
+    audio.loop = true;
+    audio.play().catch(() => {
+        console.log("Aguardando interação para tocar música...");
+        document.addEventListener('touchstart', () => audio.play(), {once: true});
+        document.addEventListener('mousedown', () => audio.play(), {once: true});
+    });
+
+    // 5. LÓGICA DO LOBBY
+    if(mapModel) mapModel.visible = false;
+    if(player) {
+        player.position.set(0, 0, 0);
+        player.rotation.y = Math.PI;
+    }
+
+    // Salva a função original de animação
+    const originalAnimate = window.animate;
+    
+    // Sobrescreve o loop para o modo Lobby
+    function lobbyLoop() {
+        if(!inLobby) return;
+        requestAnimationFrame(lobbyLoop);
+        
+        let d = clock.getDelta();
+        if(mixer) mixer.update(d);
+
+        // Rotação pelas setas
+        if(keys['ArrowLeft']) player.rotation.y += 0.05;
+        if(keys['ArrowRight']) player.rotation.y -= 0.05;
+
+        // Câmera fixa no lobby
+        camera.position.set(0, 6, 18);
+        camera.lookAt(0, 5, 0);
+        
+        renderer.render(scene, camera);
+    }
+    lobbyLoop();
+
+    // 6. FUNÇÃO START (Desfaz tudo)
+    startBtn.onclick = () => {
+        inLobby = false;
+        audio.pause();
+        startBtn.remove();
+        scene.remove(lobbyGroup);
+        if(mapModel) mapModel.visible = true;
+        
+        // Devolve o controle ao motor original
+        window.animate = originalAnimate;
+        respawn(); 
+        console.log("Lobby desativado. Jogo iniciado.");
+    };
+
+    console.log("Lobby v2 ativado. Use as setas para girar a skin!");
+})();
