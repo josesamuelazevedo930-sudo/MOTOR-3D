@@ -1,0 +1,80 @@
+(function() {
+    // 1. CONFIGURAÇÕES
+    const lobbyImg = "https://github.com/josesamuelazevedo930-sudo/Imageees/raw/main/1771787535592.png";
+    const lobbyMusic = "https://github.com/josesamuelazevedo930-sudo/MP3/raw/main/%5BNon Copyrighted Music%5D _MiguelJohnson - Good Day To Die %5BEpic%5D(MP3_160K).mp3";
+
+    // 2. CRIAÇÃO DA INTERFACE DO LOBBY
+    const lobbyDiv = document.createElement('div');
+    lobbyDiv.id = 'lobby-ui';
+    lobbyDiv.style.cssText = `
+        position: fixed; inset: 0; z-index: 2000;
+        background: url('${lobbyImg}') no-repeat center center;
+        background-size: cover; display: flex; flex-direction: column;
+        justify-content: flex-end; align-items: flex-end; padding: 50px;
+    `;
+
+    const startBtn = document.createElement('button');
+    startBtn.innerText = "START GAME";
+    startBtn.style.cssText = `
+        padding: 20px 60px; background: #ffcc00; color: #000;
+        font-size: 24px; font-weight: 900; border: 4px solid #fff;
+        border-radius: 12px; cursor: pointer; box-shadow: 0 0 20px rgba(255,204,0,0.5);
+    `;
+
+    lobbyDiv.appendChild(startBtn);
+    document.body.appendChild(lobbyDiv);
+
+    // 3. MÚSICA DE FUNDO
+    const audio = new Audio(lobbyMusic);
+    audio.loop = true;
+    audio.volume = 0.6;
+
+    // 4. PREPARAÇÃO DO CENÁRIO (Câmera e Player)
+    let inLobby = true;
+    const oldMapScale = mapModel ? mapModel.scale.x : 30;
+    
+    if(mapModel) mapModel.visible = false; // Esconde o mapa no lobby
+    if(player) {
+        player.position.set(0, 0, 0);
+        player.rotation.y = Math.PI; // Vira de frente para a câmera
+    }
+
+    // Trava a câmera na posição de Lobby
+    const originalAnimate = window.animate;
+    window.animate = function() {
+        if(inLobby) {
+            requestAnimationFrame(window.animate);
+            let d = clock.getDelta();
+            if(mixer) mixer.update(d);
+            
+            // Posiciona a câmera fixa no rosto/corpo do player
+            camera.position.set(0, 5, 15);
+            camera.lookAt(0, 4, 0);
+            
+            renderer.render(scene, camera);
+        } else {
+            // Se não estiver no lobby, volta ao normal
+            originalAnimate();
+        }
+    };
+
+    // 5. FUNÇÃO DE INICIAR
+    startBtn.onclick = () => {
+        inLobby = false;
+        lobbyDiv.style.display = 'none';
+        if(mapModel) {
+            mapModel.visible = true;
+            mapModel.scale.set(oldMapScale, oldMapScale, oldMapScale);
+        }
+        audio.pause();
+        respawn(); // Usa sua função original para resetar a posição
+        alert("Bom jogo, Samuel!");
+    };
+
+    // Tenta tocar a música (precisa de interação do usuário)
+    document.addEventListener('click', () => {
+        if(inLobby) audio.play();
+    }, { once: true });
+
+    console.log("Lobby de Elite ativado!");
+})();
