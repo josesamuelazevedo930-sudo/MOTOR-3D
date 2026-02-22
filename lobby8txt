@@ -1,0 +1,168 @@
+(function() {
+    // 1. CONFIGURAÇÕES E ASSETS
+    const lobbyImg = "https://github.com/josesamuelazevedo930-sudo/Imageees/raw/main/1771787535592.png";
+    const lobbyMusic = "https://github.com/josesamuelazevedo930-sudo/MP3/raw/main/%5BNon Copyrighted Music%5D _MiguelJohnson - Good Day To Die %5BEpic%5D(MP3_160K).mp3";
+    
+    let inLobby = true;
+    let client, meuNome, sala = "Nexus_Siri_1";
+    let remotePlayers = {};
+    const jScene = window.scene || scene;
+
+    // Carrega a biblioteca MQTT se não existir
+    if(!window.mqtt) {
+        const s = document.createElement('script');
+        s.src = 'https://cdn.jsdelivr.net/npm/mqtt@4.1.0/dist/mqtt.min.js';
+        document.head.appendChild(s);
+        s.onload = () => setupConnection();
+    } else {
+        setupConnection();
+    }
+
+    // 2. FUNDO DO LOBBY (DIRETO NA CENA PARA APARECER)
+    const loader = new THREE.TextureLoader();
+    loader.load(lobbyImg, (tex) => {
+        jScene.background = tex; // Define a imagem como fundo real da cena
+    });
+
+    // 3. INTERFACE DE ENTRADA (NICK)
+    const loginDiv = document.createElement('div');
+    loginDiv.style.cssText = "position:fixed; inset:0; background:rgba(0,0,0,0.8); z-index:5000; display:flex; flex-direction:column; align-items:center; justify-content:center; color:#0ff; font-family:sans-serif;";
+    loginDiv.innerHTML = `
+        <h2 style="text-shadow:0 0 10px #0ff">NEXUS MULTIPLAYER</h2>
+        <input id="nick-in" placeholder="SEU NICK..." style="padding:15px; background:#001a33; border:2px solid #0ff; color:#fff; border-radius:8px; width:200px; text-align:center;">
+        <button id="enter-btn" style="margin-top:20px; padding:15px 40px; background:#0ff; color:#000; font-weight:bold; border:none; border-radius:8px; cursor:pointer;">ENTRAR NO LOBBY</button>
+    `;
+    document.body.appendChild(loginDiv);
+
+    // 4. BOTÃO START (FICA OCULTO ATÉ LOGAR)
+    const startBtn = document.createElement('button');
+    startBtn.innerText = "START GAME";
+    startBtn.style.cssText = "position:fixed; bottom:40px; right:40px; width:180px; height:80px; background:#ffcc00; color:#000; font-size:22px; font-weight:900; border:4px solid #fff; border-radius:15px; cursor:pointer; z-index:4000; display:none; box-shadow: 0 0 20px #000;";
+    document.body.appendChild(startBtn);
+
+    // 5. INTERFACE DO CHAT (V8 LAYOUT)
+    const chatUI = document.createElement('div');
+    chatUI.id = 'ui-multi-game';
+    chatUI.style.cssText = "position:absolute; left:20px; top:20px; width:260px; background:rgba(0,10,30,0.9); border-radius:12px; padding:15px; color:#0ff; border:2px solid #0ff; z-index:1000; display:none;";
+    chatUI.innerHTML = `
+        <div style="font-weight:bold; text-align:center; margin-bottom:10px;">🌐 NEXUS LIVE</div>
+        <div id="chat-logs" style="height:120px; overflow-y:auto; font-size:11px; background:rgba(0,0,0,0.5); padding:8px; border:1px solid #0ff;"></div>
+        <div style="display:flex; margin-top:10px; gap:5px;">
+            <input id="chat-in" placeholder="Mensagem..." style="flex:1; background:#001a33; color:#fff; border:1px solid #0ff; padding:8px;">
+            <button id="chat-send" style="padding:5px; background:#0ff; border:none; font-weight:bold;">OK</button>
+        </div>
+    `;
+    document.body.appendChild(chatUI);
+
+    // 6. LÓGICA DE REDE
+    function setupConnection() {
+        document.getElementById('enter-btn').onclick = () => {
+            meuNome = document.getElementById('nick-in').value || "User" + Math.floor(Math.random()*99);
+            loginDiv.remove();
+            startBtn.style.display = 'block';
+            
+            client = mqtt.connect('wss://broker.emqx.io:8084/mqtt');
+            client.on('connect', () => {
+                client.subscribe('siri/multi/' + sala);
+                if(inLobby) audio.play();
+            });
+
+            client.on('message', (topic, msg) => {
+                const data = JSON.parse(msg.toString());
+                if(data.id === meuNome) return;
+
+                if(data.type === 'sync') {
+                    if(!remotePlayers[data.id]) remotePlayers[data.id] = criarAvatarRemoto(data.id);
+                    let p = remotePlayers[data.id];
+                    p.position.set(data.x, data.y, data.z);
+                    p.rotation.y = data.ry;
+                    p.lastSeen = Date.now();
+                }
+                if(data.type === 'chat') addLog(data.id, data.text);
+            });
+        };
+    }
+
+    function criarAvatarRemoto(id) {
+        const group = new THREE.Group();
+        // Label de Nome
+        const canvasN = document.createElement('canvas'); canvasN.width = 256; canvasN.height = 64;
+        const ctxN = canvasN.getContext('2d'); ctxN.fillStyle = '#0ff'; ctxN.font = 'bold 30px Arial';
+        ctxN.textAlign = 'center'; ctxN.fillText(id, 128, 45);
+        const labelN = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(canvasN) }));
+        labelN.scale.set(6, 1.5, 1); labelN.position.y = 12;
+        group.add(labelN);
+
+        loaderGLTF.load('https://threejs.org/examples/models/gltf/Soldier.glb', (gltf) => {
+            const m = gltf.scene; m.scale.set(8,8,8); group.add(m);
+        });
+        jScene.add(group);
+        return group;
+    }
+
+    function addLog(n, t) {
+        const logs = document.getElementById('chat-logs');
+        logs.innerHTML += `<div><b>${n}:</b> ${t}</div>`;
+        logs.scrollTop = logs.scrollHeight;
+    }
+
+    // 7. LOOP E SINCRONIZAÇÃO
+    const audio = new Audio(lobbyMusic); audio.loop = true;
+    if(mapModel) mapModel.visible = false;
+    if(player) {
+        player.position.set(0, -6, 0);
+        player.scale.set(12, 12, 12); // Player GIGANTE no lobby
+    }
+
+    const originalAnimate = window.animate;
+    function lobbyLoop() {
+        if(!inLobby) return;
+        requestAnimationFrame(lobbyLoop);
+        if(mixer) mixer.update(clock.getDelta());
+        if(keys['ArrowLeft']) player.rotation.y += 0.05;
+        if(keys['ArrowRight']) player.rotation.y -= 0.05;
+        camera.position.set(0, 0, 20);
+        camera.lookAt(0, 0, 0);
+        renderer.render(jScene, camera);
+    }
+
+    setInterval(() => {
+        if(client && client.connected && player) {
+            client.publish('siri/multi/'+sala, JSON.stringify({
+                type: 'sync', id: meuNome, x: player.position.x, y: player.position.y, z: player.position.z, ry: player.rotation.y
+            }));
+        }
+        // Remove inativos
+        for(let id in remotePlayers) {
+            if(Date.now() - remotePlayers[id].lastSeen > 5000) {
+                jScene.remove(remotePlayers[id]);
+                delete remotePlayers[id];
+            }
+        }
+    }, 100);
+
+    // 8. START - TRANSICAO PARA O JOGO
+    startBtn.onclick = () => {
+        inLobby = false;
+        audio.pause();
+        startBtn.remove();
+        chatUI.style.display = 'block';
+        jScene.background = new THREE.Color(0x87CEEB); // Volta o céu original
+        if(mapModel) mapModel.visible = true;
+        if(player) {
+            player.scale.set(8, 8, 8); // Tamanho normal de jogo
+        }
+        window.animate = originalAnimate;
+        respawn();
+    };
+
+    document.getElementById('chat-send').onclick = () => {
+        const i = document.getElementById('chat-in');
+        if(i.value && client) {
+            client.publish('siri/multi/'+sala, JSON.stringify({type:'chat', id:meuNome, text:i.value}));
+            addLog("Eu", i.value); i.value = "";
+        }
+    };
+
+    lobbyLoop();
+})();
