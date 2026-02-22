@@ -1,0 +1,84 @@
+(function() {
+    // 1. CONFIGURAÇÕES DE MÍDIA
+    const lobbyImg = "https://github.com/josesamuelazevedo930-sudo/Imageees/raw/main/1771787535592.png";
+    const lobbyMusic = "https://github.com/josesamuelazevedo930-sudo/MP3/raw/main/%5BNon Copyrighted Music%5D _MiguelJohnson - Good Day To Die %5BEpic%5D(MP3_160K).mp3";
+
+    let inLobby = true;
+
+    // 2. CRIAÇÃO DO FUNDO (UI) - Preenche a tela inteira da TV
+    const lobbyOverlay = document.createElement('div');
+    lobbyOverlay.id = 'lobby-full-bg';
+    lobbyOverlay.style.cssText = `
+        position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+        background: url('${lobbyImg}') no-repeat center center;
+        background-size: cover; z-index: 1998;
+    `;
+    document.body.appendChild(lobbyOverlay);
+
+    // 3. BOTÃO START (Posição correta)
+    const startBtn = document.createElement('button');
+    startBtn.innerText = "START";
+    startBtn.style.cssText = `
+        position: fixed; bottom: 40px; right: 40px;
+        width: 160px; height: 80px; background: #ffcc00; color: #000;
+        font-size: 24px; font-weight: 900; border: 6px solid #fff;
+        border-radius: 12px; cursor: pointer; z-index: 2000;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+    `;
+    document.body.appendChild(startBtn);
+
+    // 4. SISTEMA DE ÁUDIO
+    const audio = new Audio(lobbyMusic);
+    audio.loop = true;
+    const playMusic = () => audio.play().catch(() => {});
+    document.addEventListener('mousedown', playMusic, { once: true });
+    document.addEventListener('touchstart', playMusic, { once: true });
+
+    // 5. AJUSTE DO PERSONAGEM (Para não afundar)
+    if(mapModel) mapModel.visible = false;
+    if(player) {
+        // Colocamos o player um pouco abaixo do centro (Y: -3) para compensar os pés
+        player.position.set(0, -3.5, 0); 
+        player.rotation.y = Math.PI;
+    }
+
+    // 6. LOOP DE RENDERIZAÇÃO DO LOBBY
+    const originalAnimate = window.animate;
+    
+    function lobbyLoop() {
+        if(!inLobby) return;
+        requestAnimationFrame(lobbyLoop);
+        
+        let d = clock.getDelta();
+        if(mixer) mixer.update(d);
+
+        // Controle de rotação pelas setas
+        if(keys['ArrowLeft']) player.rotation.y += 0.05;
+        if(keys['ArrowRight']) player.rotation.y -= 0.05;
+
+        // Câmera posicionada para centralizar o corpo do player
+        camera.position.set(0, 0, 15);
+        camera.lookAt(0, 0, 0);
+        
+        // Mantém o fundo transparente para aparecer o CSS atrás
+        renderer.setClearColor(0x000000, 0);
+        renderer.render(scene, camera);
+    }
+    lobbyLoop();
+
+    // 7. FINALIZAR LOBBY
+    startBtn.onclick = () => {
+        inLobby = false;
+        audio.pause();
+        startBtn.remove();
+        lobbyOverlay.remove();
+        if(mapModel) mapModel.visible = true;
+        
+        // Restaura o fundo padrão e volta ao jogo
+        scene.background = new THREE.Color(0x87CEEB);
+        window.animate = originalAnimate;
+        respawn(); 
+    };
+
+    console.log("Lobby Real Ativado. Imagem em tela cheia e skin centralizada.");
+})();
