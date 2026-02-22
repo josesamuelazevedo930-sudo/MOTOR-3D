@@ -1,0 +1,85 @@
+(function() {
+    // 1. CONFIGURAÇÕES
+    const lobbyImg = "https://github.com/josesamuelazevedo930-sudo/Imageees/raw/main/1771787535592.png";
+    const lobbyMusic = "https://github.com/josesamuelazevedo930-sudo/MP3/raw/main/%5BNon Copyrighted Music%5D _MiguelJohnson - Good Day To Die %5BEpic%5D(MP3_160K).mp3";
+
+    let inLobby = true;
+    let lobbySceneGroup = new THREE.Group();
+    scene.add(lobbySceneGroup);
+
+    // 2. FUNDO 3D QUE PREENCHE A TELA (Sempre atrás do player)
+    const loader = new THREE.TextureLoader();
+    loader.load(lobbyImg, (texture) => {
+        // Criamos um plano gigante e fixamos ele longe da câmera
+        const aspect = window.innerWidth / window.innerHeight;
+        const planeGeo = new THREE.PlaneGeometry(40 * aspect, 40);
+        const planeMat = new THREE.MeshBasicMaterial({ map: texture, depthTest: false, depthWrite: false });
+        const bgMesh = new THREE.Mesh(planeGeo, planeMat);
+        
+        bgMesh.position.set(0, 0, -10); // Posicionado atrás do centro
+        camera.add(bgMesh); // Faz o fundo seguir a câmera para não ter erro
+        lobbySceneGroup.add(bgMesh);
+    });
+
+    // 3. BOTÃO START (UI)
+    const startBtn = document.createElement('button');
+    startBtn.innerText = "START";
+    startBtn.style.cssText = `
+        position: fixed; bottom: 40px; right: 40px;
+        width: 160px; height: 80px; background: #ffcc00; color: #000;
+        font-size: 24px; font-weight: 900; border: 6px solid #fff;
+        border-radius: 12px; cursor: pointer; z-index: 10000;
+    `;
+    document.body.appendChild(startBtn);
+
+    // 4. ÁUDIO
+    const audio = new Audio(lobbyMusic);
+    audio.loop = true;
+    const playAudio = () => audio.play().catch(() => {});
+    document.addEventListener('mousedown', playAudio, {once:true});
+    document.addEventListener('touchstart', playAudio, {once:true});
+
+    // 5. PREPARAR PERSONAGEM
+    if(mapModel) mapModel.visible = false;
+    if(player) {
+        player.position.set(0, -5, 0); // Ajustado para os pés ficarem na base da tela
+        player.rotation.y = Math.PI;
+        player.renderOrder = 999; // Garante que o player desenhe DEPOIS do fundo
+    }
+
+    const originalAnimate = window.animate;
+
+    function lobbyLoop() {
+        if(!inLobby) return;
+        requestAnimationFrame(lobbyLoop);
+        
+        let d = clock.getDelta();
+        if(mixer) mixer.update(d);
+
+        // Rotação pelas setas
+        if(keys['ArrowLeft']) player.rotation.y += 0.05;
+        if(keys['ArrowRight']) player.rotation.y -= 0.05;
+
+        // Câmera estática no centro
+        camera.position.set(0, 0, 20);
+        camera.lookAt(0, 0, 0);
+        
+        renderer.render(scene, camera);
+    }
+    lobbyLoop();
+
+    // 6. LIMPEZA AO DAR START
+    startBtn.onclick = () => {
+        inLobby = false;
+        audio.pause();
+        startBtn.remove();
+        scene.remove(lobbySceneGroup);
+        if(mapModel) mapModel.visible = true;
+        if(player) player.renderOrder = 0;
+        
+        window.animate = originalAnimate;
+        respawn();
+    };
+
+    console.log("Lobby v3: Player sempre visível e fundo ajustado.");
+})();
