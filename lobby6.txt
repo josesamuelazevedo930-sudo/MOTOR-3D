@@ -1,0 +1,147 @@
+(function() {
+    // 1. LIMPEZA TOTAL DA UI ORIGINAL
+    document.querySelectorAll('.ui-btn, .zoom-ctrl, #jump-btn, .panel').forEach(el => el.style.display = 'none');
+    
+    // 2. CONFIGURAÇÕES DE MÍDIA
+    const lobbyImg = "https://github.com/josesamuelazevedo930-sudo/Imageees/raw/main/1771787535592.png";
+    const lobbyMusic = "https://github.com/josesamuelazevedo930-sudo/MP3/raw/main/%5BNon Copyrighted Music%5D _MiguelJohnson - Good Day To Die %5BEpic%5D(MP3_160K).mp3";
+    
+    let inLobby = true;
+    let meuNome = "";
+    let sala = "1";
+    let remotePlayers = {};
+    let client;
+
+    // Carregar MQTT
+    const mqttScript = document.createElement('script');
+    mqttScript.src = 'https://cdn.jsdelivr.net/npm/mqtt@4.1.0/dist/mqtt.min.js';
+    document.head.appendChild(mqttScript);
+
+    // 3. INTERFACE DE LOGIN (O que aparece primeiro)
+    const loginUI = document.createElement('div');
+    loginUI.style.cssText = `position:fixed; inset:0; z-index:10005; background:url('${lobbyImg}') no-repeat center; background-size:cover; display:flex; flex-direction:column; align-items:center; justify-content:center; font-family:sans-serif;`;
+    loginUI.innerHTML = `
+        <div style="background:rgba(0,0,0,0.8); padding:30px; border-radius:20px; border:2px solid #00ffff; text-align:center; box-shadow:0 0 20px #00ffff;">
+            <h1 style="color:#00ffff; margin-bottom:20px; letter-spacing:5px;">NEXUS MULTI</h1>
+            <input id="nick-in" placeholder="SEU NICK" style="width:200px; padding:12px; margin-bottom:10px; border-radius:8px; border:none; text-align:center;">
+            <input id="sala-in" placeholder="SALA" value="1" style="width:200px; padding:12px; margin-bottom:20px; border-radius:8px; border:none; text-align:center;">
+            <button id="enter-btn" style="width:100%; padding:15px; background:#00ffff; border:none; border-radius:8px; font-weight:bold; cursor:pointer;">ENTRAR NO LOBBY</button>
+        </div>
+    `;
+    document.body.appendChild(loginUI);
+
+    // 4. LÓGICA DO LOBBY 3D
+    const audio = new Audio(lobbyMusic);
+    audio.loop = true;
+
+    function iniciarLobbySystem() {
+        if(mapModel) mapModel.visible = false;
+        if(player) {
+            player.scale.multiplyScalar(1.5); // Aumenta o tamanho da sua skin no lobby
+            player.position.set(0, -4, 0);
+            player.rotation.y = Math.PI;
+        }
+
+        // Criar UI de Chat e Amigos no Lobby
+        const lobbyUI = document.createElement('div');
+        lobbyUI.id = "lobby-hud";
+        lobbyUI.style.cssText = "position:fixed; left:20px; bottom:20px; width:280px; z-index:10001; color:#00ffff; font-family:monospace;";
+        lobbyUI.innerHTML = `
+            <div id="friends-list" style="background:rgba(0,0,0,0.7); padding:10px; border-radius:8px; margin-bottom:10px; border:1px solid #00ffff;">
+                <b>👥 ONLINE:</b> <span id="online-count">1</span>
+                <div id="names" style="font-size:12px; margin-top:5px;"></div>
+            </div>
+            <div id="lobby-chat" style="background:rgba(0,0,0,0.7); height:120px; overflow-y:auto; padding:10px; border-radius:8px; border:1px solid #333; font-size:11px;"></div>
+            <button id="btn-start-multi" style="position:fixed; bottom:40px; right:40px; width:180px; height:80px; background:#ffcc00; color:#000; font-size:24px; font-weight:900; border:6px solid #fff; border-radius:15px; cursor:pointer; box-shadow:0 0 20px #000;">START GAME</button>
+        `;
+        document.body.appendChild(lobbyUI);
+
+        // Conexão MQTT
+        client = mqtt.connect('wss://broker.emqx.io:8084/mqtt');
+        client.on('connect', () => {
+            client.subscribe('nexus/lobby/' + sala);
+            addChat("SISTEMA", "Você entrou na sala " + sala);
+        });
+
+        client.on('message', (topic, msg) => {
+            const data = JSON.parse(msg.toString());
+            if(data.id === meuNome) return;
+
+            if(data.type === 'sync_lobby' && inLobby) {
+                if(!remotePlayers[data.id]) {
+                    remotePlayers[data.id] = criarAvatarLobby(data.id);
+                }
+                remotePlayers[data.id].lastSeen = Date.now();
+                atualizarLista();
+            }
+            if(data.type === 'start_command') {
+                finalizarLobby();
+            }
+        });
+
+        document.getElementById('btn-start-multi').onclick = () => {
+            client.publish('nexus/lobby/' + sala, JSON.stringify({ type: 'start_command' }));
+            finalizarLobby();
+        };
+
+        runLobbyLoop();
+    }
+
+    function criarAvatarLobby(id) {
+        const group = new THREE.Group();
+        loaderGLTF.load('https://threejs.org/examples/models/gltf/Soldier.glb', (gltf) => {
+            const m = gltf.scene; m.scale.set(7, 7, 7); group.add(m);
+        });
+        group.position.set(Object.keys(remotePlayers).length * 8 - 4, -4, -5);
+        scene.add(group);
+        return group;
+    }
+
+    function runLobbyLoop() {
+        if(!inLobby) return;
+        requestAnimationFrame(runLobbyLoop);
+        if(mixer) mixer.update(clock.getDelta());
+        
+        // Sincroniza presença no lobby
+        if(client && client.connected) {
+            client.publish('nexus/lobby/' + sala, JSON.stringify({ type: 'sync_lobby', id: meuNome }));
+        }
+
+        if(keys['ArrowLeft']) player.rotation.y += 0.05;
+        if(keys['ArrowRight']) player.rotation.y -= 0.05;
+
+        camera.position.set(0, 2, 25);
+        camera.lookAt(0, 0, 0);
+        renderer.render(scene, camera);
+    }
+
+    function finalizarLobby() {
+        inLobby = false;
+        audio.pause();
+        document.getElementById('lobby-hud').remove();
+        document.querySelectorAll('.ui-btn, .zoom-ctrl, #jump-btn').forEach(el => el.style.display = 'block');
+        if(mapModel) mapModel.visible = true;
+        if(player) player.scale.set(8,8,8); // Volta ao tamanho original (ajuste conforme sua skin)
+        window.animate(); // Retoma o loop original
+        respawn();
+    }
+
+    function addChat(n, t) {
+        const c = document.getElementById('lobby-chat');
+        if(c) { c.innerHTML += `<div><b>${n}:</b> ${t}</div>`; c.scrollTop = c.scrollHeight; }
+    }
+
+    function atualizarLista() {
+        const namesDiv = document.getElementById('names');
+        if(namesDiv) namesDiv.innerHTML = Object.keys(remotePlayers).join(', ');
+    }
+
+    // BOTÃO DE ENTRAR
+    document.getElementById('enter-btn').onclick = () => {
+        meuNome = document.getElementById('nick-in').value || "Player" + Math.floor(Math.random()*99);
+        sala = document.getElementById('sala-in').value || "1";
+        loginUI.remove();
+        audio.play();
+        iniciarLobbySystem();
+    };
+})();
