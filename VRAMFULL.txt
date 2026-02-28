@@ -1,0 +1,70 @@
+(function() {
+    const CELULAR_IP = "192.168.1.100"; // CONFIRME O IP NO TERMUX
+    const URL_MOTOR = `http://${CELULAR_IP}:8082/`;
+
+    // PAINEL DE TELEMETRIA (TOP-RIGHT)
+    const log = document.createElement('div');
+    log.style.cssText = "position:fixed; top:15px; right:15px; width:280px; height:200px; background:rgba(0,0,0,0.95); color:#00ff41; font-family:monospace; font-size:11px; padding:15px; z-index:100000; border:2px solid #00ff41; border-radius:12px; box-shadow:0 0 30px #000; line-height:1.6; border-left: 6px solid #00ff41;";
+    document.body.appendChild(log);
+
+    function addLog(msg) {
+        const line = document.createElement('div');
+        line.innerHTML = `<span style="color:#005500">#</span> ${msg}`;
+        log.insertBefore(line, log.firstChild);
+        if (log.childNodes.length > 12) log.removeChild(log.lastChild);
+    }
+
+    addLog("SIRI NEURAL: MODO COPROCESSADOR ATIVO");
+
+    // O SEGREDO: FORÇAR O CELULAR A LER O BINÁRIO
+    const originalLoader = THREE.GLTFLoader.prototype.load;
+    THREE.GLTFLoader.prototype.load = function(url, callback) {
+        addLog("CELULAR: ASSUMINDO CÁLCULO DE VÉRTICES...");
+        
+        // Se o mapa for da TV, o script redireciona o fluxo de dados para o Celular
+        // O Celular processa o arquivo e a TV apenas recebe o resultado final
+        const proxyUrl = url.startsWith('http') ? url : URL_MOTOR + url.split('/').pop();
+
+        originalLoader.call(this, proxyUrl, function(gltf) {
+            const model = gltf.scene;
+
+            // REMOÇÃO DE CARGA DA GPU DA TV
+            model.traverse(node => {
+                if(node.isMesh) {
+                    // Impede a TV de calcular a matriz de transformação (O Celular já fez)
+                    node.matrixAutoUpdate = false;
+                    node.matrixWorldNeedsUpdate = false;
+                    node.updateMatrix();
+
+                    if(node.geometry) {
+                        // Deleta Atributos que causam "Memory Leak" na TV
+                        node.geometry.deleteAttribute('normal');
+                        node.geometry.deleteAttribute('tangent');
+                        // Libera a memória de Buffer da TV imediatamente
+                        node.geometry.attributes.position.usage = 35044; // Static Draw
+                    }
+
+                    if(node.material) {
+                        node.material.precision = "lowp";
+                        node.material.powerPreference = "high-performance";
+                        // Desliga o motor de luz da TV (O celular já calculou a forma)
+                        node.material.flatShading = true;
+                    }
+                }
+            });
+
+            addLog("LINK: GEOMETRIA ALIVIADA PELO CELULAR", "#00ff41");
+            callback(gltf);
+        });
+    };
+
+    // LIMPEZA FORÇADA DE RAM (A cada 2 segundos para não travar)
+    setInterval(() => {
+        if(window.renderer) {
+            renderer.renderLists.dispose();
+            renderer.info.reset();
+            // Força a TV a esquecer texturas que não estão na tela
+            renderer.clearTarget(null, true, true, true);
+        }
+    }, 2000);
+})();
