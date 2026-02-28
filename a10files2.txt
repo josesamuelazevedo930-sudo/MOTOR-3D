@@ -1,0 +1,107 @@
+(function() {
+    const IP_CELULAR = "192.168.1.100"; 
+    const URL_BASE = `http://${IP_CELULAR}:8080/`;
+
+    // 1. AUDIO PLAYER FIXO
+    if(!document.getElementById('siri-player')) {
+        const a = document.createElement('audio');
+        a.id = 'siri-player'; a.controls = true;
+        a.style.cssText = "position:fixed; bottom:10px; left:10px; z-index:20000; width:250px; height:30px; background:#222; border-radius:5px;";
+        document.body.appendChild(a);
+    }
+
+    // 2. PAINEL COM SCROLL HABILITADO
+    const panel = document.createElement('div');
+    panel.id = "siri-files-panel";
+    panel.style.cssText = `
+        position:fixed; left:10px; top:80px; width:300px; height:60vh; 
+        background:rgba(0,0,0,0.95); color:#fff; border:3px solid #ffcc00; 
+        z-index:15000; padding:15px; overflow-y: scroll; /* Força o scroll */
+        font-family:sans-serif; border-radius:15px; display:none;
+        pointer-events: auto; touch-action: auto;
+    `;
+    panel.innerHTML = `<h3 style="color:#ffcc00;text-align:center;margin:0">SIRI DRIVE</h3><hr><div id="drive-list"></div>`;
+    document.body.appendChild(panel);
+
+    // 3. BOTÃO DE ACESSO
+    const btn = document.createElement('button');
+    btn.innerHTML = "FILES";
+    btn.style.cssText = "position:fixed; left:10px; top:10px; z-index:16000; width:70px; height:50px; background:#ffcc00; border:none; font-weight:bold; border-radius:8px;";
+    document.body.appendChild(btn);
+
+    btn.onclick = () => {
+        panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+        if(panel.style.display === 'block') refresh();
+    };
+
+    // 4. FUNÇÃO DE CARREGAMENTO AUTOMÁTICO
+    async function refresh() {
+        const list = document.getElementById('drive-list');
+        list.innerHTML = "Carregando...";
+        try {
+            const res = await fetch(URL_BASE);
+            const html = await res.text();
+            const doc = new DOMParser().parseFromString(html, 'text/html');
+            const links = Array.from(doc.querySelectorAll('a'));
+            list.innerHTML = "";
+
+            links.forEach(l => {
+                const name = l.innerText;
+                if(name.includes("/") || name.startsWith("..")) return;
+
+                const row = document.createElement('div');
+                row.style.cssText = "padding:12px; margin:5px 0; background:#222; border-radius:5px; cursor:pointer; font-size:13px; border-left:4px solid #ffcc00;";
+                row.innerHTML = `<b>»</b> ${name}`;
+                
+                // EVENTO DE CLIQUE PARA EXECUTAR
+                row.onclick = () => exec(name);
+                list.appendChild(row);
+            });
+        } catch(e) { list.innerHTML = "ERRO: Verifique o Termux!"; }
+    }
+
+    // 5. INTELIGÊNCIA DE EXECUÇÃO (Mágica aqui)
+    function exec(name) {
+        const url = URL_BASE + name;
+        console.log("Executando: " + name);
+
+        // 🎵 MUSICA
+        if(name.endsWith('.mp3')) {
+            const p = document.getElementById('siri-player');
+            p.src = url; p.play();
+            alert("Tocando: " + name);
+        }
+        // 📜 SCRIPT (Executa na hora)
+        else if(name.endsWith('.txt') || name.endsWith('.js')) {
+            fetch(url).then(r => r.text()).then(code => {
+                try { eval(code); alert("Script OK!"); } catch(err){ alert("Erro Script!"); }
+            });
+        }
+        // 📦 MODELO 3D (Mapa ou Skin)
+        else if(name.endsWith('.glb')) {
+            const isMap = confirm("OK para MAPA | CANCELAR para SKIN");
+            if(window.loaderGLTF) {
+                loaderGLTF.load(url, (gltf) => {
+                    const obj = gltf.scene;
+                    if(isMap) {
+                        if(window.mapModel) scene.remove(mapModel);
+                        window.mapModel = obj;
+                        window.mapModel.scale.set(30,30,30);
+                        scene.add(window.mapModel);
+                        alert("Mapa Trocado!");
+                    } else {
+                        if(window.player) {
+                            const pPos = player.position.clone();
+                            scene.remove(player);
+                            window.player = obj;
+                            window.player.position.copy(pPos);
+                            window.player.scale.set(8,8,8);
+                            scene.add(window.player);
+                            alert("Skin Trocada!");
+                        }
+                    }
+                });
+            }
+        }
+    }
+})();
