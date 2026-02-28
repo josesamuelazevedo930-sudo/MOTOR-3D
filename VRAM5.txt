@@ -1,0 +1,58 @@
+(function() {
+    const IP_CELULAR = "192.168.1.100"; 
+    const PORTA = "8082"; 
+    const URL_MOTOR = `http://${IP_CELULAR}:${PORTA}/`;
+
+    const log = document.createElement('div');
+    log.style.cssText = "position:fixed; top:10px; right:10px; width:280px; height:200px; background:rgba(0,0,40,0.9); color:#00ffff; font-family:monospace; font-size:11px; padding:15px; z-index:100000; border:2px solid #00ffff; border-radius:12px; box-shadow:0 0 25px #000; pointer-events:none; line-height:1.5;";
+    document.body.appendChild(log);
+
+    function addLog(msg) {
+        const line = document.createElement('div');
+        line.innerHTML = `<span style="color:#ffffff">>></span> ${msg}`;
+        log.insertBefore(line, log.firstChild);
+        if (log.childNodes.length > 12) log.removeChild(log.lastChild);
+    }
+
+    addLog("MOTOR HÍBRIDO: MODO PERFORMANCE ATIVO");
+
+    const originalLoader = THREE.GLTFLoader.prototype.load;
+    THREE.GLTFLoader.prototype.load = function(url, callback) {
+        const fileName = url.split('/').pop();
+        const proxyUrl = URL_MOTOR + fileName;
+
+        addLog(`CELULAR PROCESSANDO: ${fileName}`);
+
+        originalLoader.call(this, proxyUrl, function(gltf) {
+            const model = gltf.scene;
+            model.traverse(node => {
+                if(node.isMesh) {
+                    node.matrixAutoUpdate = false;
+                    node.updateMatrix();
+
+                    // AJUSTE PARA NÃO FICAR PRETO:
+                    // Em vez de deletar tudo, vamos usar um material que não exige cálculo de luz (Basic)
+                    if(node.material) {
+                        const oldTex = node.material.map; // Salva a textura se houver
+                        node.material = new THREE.MeshBasicMaterial({
+                            map: oldTex,
+                            color: node.material.color,
+                            transparent: node.material.transparent,
+                            opacity: node.material.opacity
+                        });
+                    }
+                    
+                    // Alivia a geometria mas mantém o essencial para a cor
+                    if(node.geometry) {
+                        node.geometry.computeBoundingSphere();
+                    }
+                }
+            });
+            addLog(`SUCESSO: ${fileName} RENDERIZADO`);
+            callback(gltf);
+        }, undefined, (err) => {
+            addLog(`FALHA: USANDO RAM DA TV (LENTO)`, "#ff0000");
+            originalLoader.call(this, url, callback); 
+        });
+    };
+})();
