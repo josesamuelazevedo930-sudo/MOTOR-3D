@@ -1,0 +1,68 @@
+(function() {
+    const IP_CELULAR = "192.168.1.100"; // CONFIRME SEU IP NO TERMUX
+    const PORTA = "8081";
+    const URL_RAM = `http://${IP_CELULAR}:${PORTA}/`;
+
+    // PAINEL DE MONITORAMENTO (TOP-RIGHT)
+    const log = document.createElement('div');
+    log.style.cssText = "position:fixed; top:10px; right:10px; width:280px; height:200px; background:rgba(0,0,0,0.9); color:#00ff41; font-family:monospace; font-size:11px; padding:15px; z-index:100000; border:2px solid #00ff41; border-radius:12px; box-shadow:0 0 25px #000; line-height:1.6; pointer-events:none;";
+    document.body.appendChild(log);
+
+    function addLog(msg) {
+        const line = document.createElement('div');
+        line.innerHTML = `<span style="color:#005500">#</span> ${msg}`;
+        log.insertBefore(line, log.firstChild);
+        if (log.childNodes.length > 10) log.removeChild(log.lastChild);
+    }
+
+    addLog("SIRI NEURAL: TESTANDO LINK...");
+
+    // TESTE DE CONEXÃO (PING)
+    fetch(URL_RAM).then(() => addLog("LINK OK: CELULAR DETECTADO")).catch(() => addLog("ERRO: CELULAR NÃO ENCONTRADO"));
+
+    // 1. DRAIN DE RAM (Limpa a TV para o mapa entrar)
+    setInterval(() => {
+        if(window.renderer) {
+            renderer.renderLists.dispose();
+            renderer.info.reset();
+            addLog("CPU TV: CACHE ALIVIADO");
+        }
+    }, 4000);
+
+    // 2. INTERCEPTADOR DE GEOMETRIA (OFFLOADING REAL)
+    const originalLoader = THREE.GLTFLoader.prototype.load;
+    THREE.GLTFLoader.prototype.load = function(url, callback) {
+        addLog("CELULAR: CALCULANDO MODELO...");
+        
+        // Força o carregamento vindo da RAM do Celular
+        const fileName = url.split('/').pop();
+        const proxyUrl = URL_RAM + fileName;
+
+        originalLoader.call(this, proxyUrl, function(gltf) {
+            const model = gltf.scene;
+            model.traverse(node => {
+                if(node.isMesh) {
+                    node.matrixAutoUpdate = false;
+                    node.updateMatrix();
+                    
+                    // Alívio de Buffer: Deleta dados que matam a RAM da TV
+                    if(node.geometry) {
+                        node.geometry.deleteAttribute('normal');
+                        node.geometry.deleteAttribute('tangent');
+                    }
+                    if(node.material) {
+                        node.material.precision = "lowp";
+                        node.material.flatShading = true;
+                    }
+                }
+            });
+            addLog("NEURAL: MAPA PROCESSADO!");
+            callback(gltf);
+        });
+    };
+
+    if(window.scene) {
+        scene.traverse(obj => { if(obj.isLight) obj.castShadow = false; });
+        addLog("MODO TURBO: SOMBRAS OFF");
+    }
+})();
