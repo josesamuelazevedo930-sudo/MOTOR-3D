@@ -1,0 +1,61 @@
+(function() {
+    const IP_CELULAR = "192.168.1.100"; // CONFIRME SEU IP NO TERMUX
+    const PORTA = "8082"; 
+    const URL_MOTOR = `http://${IP_CELULAR}:${PORTA}/`;
+
+    const log = document.createElement('div');
+    log.style.cssText = "position:fixed; top:10px; right:10px; width:280px; height:200px; background:rgba(0,0,40,0.9); color:#00ffff; font-family:monospace; font-size:11px; padding:15px; z-index:100000; border:2px solid #00ffff; border-radius:12px; box-shadow:0 0 25px #000; pointer-events:none; line-height:1.5;";
+    document.body.appendChild(log);
+
+    function addLog(msg) {
+        const line = document.createElement('div');
+        line.innerHTML = `<span style="color:#ffffff">>></span> ${msg}`;
+        log.insertBefore(line, log.firstChild);
+        if (log.childNodes.length > 12) log.removeChild(log.lastChild);
+    }
+
+    addLog("MOTOR GRÁFICO: CONECTANDO PORTA 8082...");
+
+    // INTERCEPTADOR DE GEOMETRIA (O CELULAR É O MOTOR)
+    const originalLoader = THREE.GLTFLoader.prototype.load;
+    THREE.GLTFLoader.prototype.load = function(url, callback) {
+        const fileName = url.split('/').pop();
+        const proxyUrl = URL_MOTOR + fileName;
+
+        addLog(`CELULAR: PROCESSANDO ${fileName}...`);
+
+        originalLoader.call(this, proxyUrl, function(gltf) {
+            const model = gltf.scene;
+            model.traverse(node => {
+                if(node.isMesh) {
+                    node.matrixAutoUpdate = false; // TV para de calcular posição
+                    node.updateMatrix();
+
+                    if(node.geometry) {
+                        // O segredo: Arranca o peso antes da TV processar
+                        node.geometry.deleteAttribute('normal');
+                        node.geometry.deleteAttribute('tangent');
+                        node.geometry.computeBoundingSphere();
+                    }
+                    if(node.material) {
+                        node.material.precision = "lowp";
+                        node.material.powerPreference = "high-performance";
+                    }
+                }
+            });
+            addLog(`SUCESSO: ${fileName} ALIVIADO!`);
+            callback(gltf);
+        }, undefined, (err) => {
+            addLog(`FALHA: ${fileName} NÃO ESTÁ NO CELULAR`, "#ff0000");
+            originalLoader.call(this, url, callback); 
+        });
+    };
+
+    setInterval(() => {
+        if(window.renderer) {
+            renderer.renderLists.dispose();
+            renderer.info.reset();
+            addLog("RAM TV: CACHE LIMPO");
+        }
+    }, 4000);
+})();
