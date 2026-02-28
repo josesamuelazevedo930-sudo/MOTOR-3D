@@ -1,0 +1,81 @@
+(function() {
+    const IP_CELULAR = "192.168.1.100"; // CONFIRME SEU IP NO TERMUX
+    const URL_MOTOR = `http://${IP_CELULAR}:8080/`;
+
+    // 1. INTERFACE DE STATUS (TOP-RIGHT)
+    const log = document.createElement('div');
+    log.style.cssText = "position:fixed; top:15px; right:15px; width:280px; height:180px; background:rgba(0,15,0,0.9); color:#00ff41; font-family:monospace; font-size:11px; padding:15px; z-index:100000; border:2px solid #00ff41; border-radius:12px; box-shadow:0 0 25px #000; line-height:1.6; pointer-events:none; border-left: 6px solid #00ff41;";
+    document.body.appendChild(log);
+
+    function addLog(msg) {
+        const line = document.createElement('div');
+        line.innerHTML = `<span style="color:#005500">#</span> ${msg}`;
+        log.insertBefore(line, log.firstChild);
+        if (log.childNodes.length > 10) log.removeChild(log.lastChild);
+    }
+
+    addLog("SIRI NEURAL: MOTOR HÍBRIDO ATIVO");
+    addLog("STATUS: CELULAR É A RAM PRINCIPAL");
+
+    // 2. DRAIN DE RAM (Prevenção contra fechamento do navegador)
+    setInterval(() => {
+        if(window.renderer) {
+            renderer.renderLists.dispose();
+            renderer.info.reset();
+            renderer.clear();
+            addLog("CPU TV: CACHE ALIVIADO");
+        }
+    }, 3000);
+
+    // 3. INTERCEPTADOR DE MOTOR (A TV apenas desenha)
+    const originalLoader = THREE.GLTFLoader.prototype.load;
+    THREE.GLTFLoader.prototype.load = function(url, callback) {
+        addLog("CELULAR: CALCULANDO MODELO 3D...");
+        
+        const proxyUrl = url.includes('http') ? url : URL_MOTOR + url;
+
+        originalLoader.call(this, proxyUrl, function(gltf) {
+            const model = gltf.scene;
+
+            model.traverse(node => {
+                if(node.isMesh) {
+                    // CONGELA A POSIÇÃO: ECONOMIZA CPU DA TV
+                    node.matrixAutoUpdate = false; 
+                    node.matrixWorldNeedsUpdate = false;
+                    node.updateMatrix();
+
+                    // REMOVE O PESO MATEMÁTICO (Normais e Tangentes)
+                    // O celular processou a forma, a TV só exibe a malha.
+                    if(node.geometry) {
+                        node.geometry.deleteAttribute('normal');
+                        node.geometry.deleteAttribute('tangent');
+                        node.geometry.computeBoundingSphere();
+                    }
+
+                    // MATERIAL DE ALTA PERFORMANCE (SEM SOMBRAS)
+                    if(node.material) {
+                        node.material.precision = "lowp";
+                        node.material.flatShading = true;
+                        node.material.powerPreference = "high-performance";
+                    }
+                }
+            });
+
+            addLog("NEURAL: MAPA CARREGADO VIA CELULAR!");
+            callback(gltf);
+        });
+    };
+
+    // 4. MODO TURBO (FPS ESTÁVEL)
+    if(window.scene) {
+        scene.matrixAutoUpdate = false;
+        scene.traverse(obj => {
+            if(obj.isLight) obj.castShadow = false; 
+            if(obj.isMesh) {
+                obj.receiveShadow = false;
+                obj.frustumCulled = true; 
+            }
+        });
+        addLog("SISTEMA: MODO ALTA PERFORMANCE ON");
+    }
+})();
