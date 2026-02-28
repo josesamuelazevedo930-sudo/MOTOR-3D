@@ -1,0 +1,58 @@
+(function() {
+    // Endereço fixo que criamos no Termux
+    const URL_BASE = "https://meu-jogo-siri.loca.lt/";
+
+    // 1. UI DE ARQUIVOS (LADO ESQUERDO)
+    const panel = document.createElement('div');
+    panel.style.cssText = "position:fixed; left:10px; top:10px; width:220px; height:400px; background:rgba(0,0,0,0.9); color:#fff; border:1px solid #ffcc00; z-index:10000; padding:10px; overflow-y:auto; font-family:sans-serif; border-radius:10px;";
+    panel.innerHTML = `<b style="color:#ffcc00">SIRI DRIVE (CELL)</b><hr><div id="files">Conectando...</div>`;
+    document.body.appendChild(panel);
+
+    async function loadFiles() {
+        try {
+            const res = await fetch(URL_BASE);
+            const html = await res.text();
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(html, 'text/html');
+            const links = Array.from(doc.querySelectorAll('a'));
+            
+            const list = document.getElementById('files');
+            list.innerHTML = "";
+            
+            links.forEach(link => {
+                let name = link.innerText;
+                if(name.includes("/")) return;
+
+                let item = document.createElement('div');
+                item.innerText = "📄 " + name;
+                item.style.cssText = "padding:8px; cursor:pointer; border-bottom:1px solid #222; font-size:13px;";
+                item.onclick = () => runFile(name);
+                list.appendChild(item);
+            });
+        } catch(e) { 
+            document.getElementById('files').innerHTML = "Ligue o Termux primeiro!"; 
+        }
+    }
+
+    function runFile(name) {
+        const fullPath = URL_BASE + name;
+        if(name.endsWith('.js')) {
+            const s = document.createElement('script');
+            s.src = fullPath;
+            document.head.appendChild(s);
+            console.log("Executado: " + name);
+        }
+        if(name.endsWith('.glb') || name.endsWith('.gltf')) {
+            if(window.loaderGLTF) {
+                loaderGLTF.load(fullPath, (gltf) => {
+                    scene.add(gltf.scene);
+                    alert("Objeto " + name + " adicionado!");
+                });
+            }
+        }
+    }
+
+    // Atualiza a lista a cada 5 segundos sozinho
+    setInterval(loadFiles, 5000);
+    loadFiles();
+})();
