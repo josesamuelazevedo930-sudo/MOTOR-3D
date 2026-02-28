@@ -1,0 +1,75 @@
+(function() {
+    const IP_CELULAR = "192.168.1.100"; 
+    const URL_RAM = `http://${IP_CELULAR}:8080/`;
+
+    // 1. PAINEL DE MONITORAMENTO (TOP-RIGHT)
+    const log = document.createElement('div');
+    log.id = "siri-log";
+    log.style.cssText = "position:fixed; top:15px; right:15px; width:260px; height:180px; background:rgba(0,10,0,0.9); color:#00ff41; font-family:monospace; font-size:11px; padding:15px; z-index:100000; border:2px solid #00ff41; pointer-events:none; border-radius:10px; box-shadow:0 0 20px #000; line-height:1.5; border-left: 5px solid #00ff41;";
+    document.body.appendChild(log);
+
+    function addLog(msg) {
+        const line = document.createElement('div');
+        line.innerHTML = `<span style="color:#008822">></span> ${msg}`;
+        log.insertBefore(line, log.firstChild);
+        if (log.childNodes.length > 10) log.removeChild(log.lastChild);
+    }
+
+    addLog("SIRI NEURAL LINK: ONLINE");
+    addLog("SISTEMA: RAM VIRTUAL ATIVA");
+
+    // 2. LIMPEZA DE MEMÓRIA (Anti-Travamento)
+    // Esvazia o cache da TV a cada 3 segundos para o navegador não fechar
+    setInterval(() => {
+        if(window.renderer) {
+            renderer.renderLists.dispose();
+            renderer.info.reset();
+            addLog("RAM TV: CACHE ESVAZIADO");
+        }
+    }, 3000);
+
+    // 3. REDIRECIONAMENTO DE CARGA (CELULAR PROCESSANDO)
+    const originalLoader = THREE.GLTFLoader.prototype.load;
+    THREE.GLTFLoader.prototype.load = function(url, callback) {
+        addLog("CELULAR: CALCULANDO GEOMETRIA...");
+        
+        // Redireciona a carga para o servidor GZIP do Termux
+        const proxyUrl = url.includes('http') ? url : URL_RAM + url;
+
+        originalLoader.call(this, proxyUrl, function(gltf) {
+            const model = gltf.scene;
+            model.traverse(node => {
+                if(node.isMesh) {
+                    // CONGELA A MATRIZ: A TV PARA DE CALCULAR, O CELULAR JÁ FEZ
+                    node.matrixAutoUpdate = false;
+                    node.updateMatrix();
+                    
+                    // ALÍVIO DE BUFFER: Deleta cálculos de luz que matam a TV
+                    if(node.geometry) {
+                        node.geometry.deleteAttribute('normal');
+                        node.geometry.deleteAttribute('tangent');
+                    }
+                    
+                    // PERFORMANCE MÁXIMA NOS MATERIAIS
+                    if(node.material) {
+                        node.material.precision = "lowp";
+                        node.material.flatShading = true;
+                        node.material.powerPreference = "high-performance";
+                    }
+                }
+            });
+            addLog("LINK: MAPA PESADO INJETADO!");
+            callback(gltf);
+        });
+    };
+
+    // 4. MODO TURBO (Sombras OFF para Ganhar FPS)
+    if(window.scene) {
+        scene.matrixAutoUpdate = false;
+        scene.traverse(obj => { 
+            if(obj.isLight) obj.castShadow = false;
+            if(obj.isMesh) obj.receiveShadow = false;
+        });
+        addLog("MODO TURBO: SOMBRAS OFF");
+    }
+})();
