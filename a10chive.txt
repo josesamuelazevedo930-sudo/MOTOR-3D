@@ -1,0 +1,80 @@
+(function() {
+    // IP do seu celular detectado: 192.168.1.100
+    const URL_BASE = "http://192.168.1.100:8080/";
+
+    // 1. GERENCIADOR DE ARQUIVOS (PAINEL)
+    const panel = document.createElement('div');
+    panel.style.cssText = "position:fixed; left:20px; top:85px; width:280px; height:450px; background:rgba(10,10,10,0.98); color:#fff; border:2px solid #ffcc00; z-index:10000; padding:15px; overflow-y:auto; font-family:sans-serif; border-radius:15px; display:none; box-shadow:0 0 30px #000;";
+    panel.innerHTML = `<h3 style="margin:0; color:#ffcc00; text-align:center;">SIRI DRIVE</h3><hr style="border:0; border-top:1px solid #333; margin:10px 0;"><div id="file-list">Buscando no Celular...</div>`;
+    document.body.appendChild(panel);
+
+    // 2. BOTÃO ABRE/FECHA 📁
+    const btn = document.createElement('button');
+    btn.innerHTML = "📁";
+    btn.style.cssText = "position:fixed; left:20px; top:20px; z-index:10001; width:55px; height:55px; background:#ffcc00; border:none; border-radius:12px; font-size:26px; cursor:pointer; box-shadow:0 4px 15px rgba(0,0,0,0.5); font-weight:bold;";
+    document.body.appendChild(btn);
+
+    btn.onclick = () => {
+        panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+        if(panel.style.display === 'block') refresh();
+    };
+
+    // 3. BUSCAR ARQUIVOS
+    async function refresh() {
+        const listDiv = document.getElementById('file-list');
+        try {
+            const res = await fetch(URL_BASE);
+            const html = await res.text();
+            const doc = new DOMParser().parseFromString(html, 'text/html');
+            const links = Array.from(doc.querySelectorAll('a'));
+            
+            listDiv.innerHTML = "";
+            links.forEach(l => {
+                const name = l.innerText;
+                if(name.includes("/") || name.startsWith("..")) return;
+
+                const item = document.createElement('div');
+                item.style.cssText = "padding:12px; border-bottom:1px solid #222; cursor:pointer; font-size:14px;";
+                item.innerHTML = `📄 ${name}`;
+                item.onmouseover = () => item.style.background = "#222";
+                item.onmouseout = () => item.style.background = "transparent";
+                
+                item.onclick = () => loadAsset(name);
+                listDiv.appendChild(item);
+            });
+        } catch(e) { listDiv.innerHTML = "<b style='color:red'>ERRO: Ligue o Termux!</b>"; }
+    }
+
+    // 4. EXECUTAR COMO MAPA OU SKIN
+    function loadAsset(name) {
+        const fileUrl = URL_BASE + name;
+        if(name.endsWith('.js')) {
+            const s = document.createElement('script'); s.src = fileUrl; document.head.appendChild(s);
+            console.log("Script rodado!");
+        } 
+        else if(name.endsWith('.glb') || name.endsWith('.gltf')) {
+            const isMap = confirm(`Arquivo: ${name}\n\nOK para carregar como MAPA\nCANCELAR para carregar como SKIN`);
+            
+            if(window.loaderGLTF) {
+                loaderGLTF.load(fileUrl, (gltf) => {
+                    if(isMap) { // MODO MAPA
+                        if(window.mapModel) scene.remove(mapModel);
+                        window.mapModel = gltf.scene;
+                        scene.add(mapModel);
+                        alert("Mapa trocado com sucesso!");
+                    } else { // MODO SKIN
+                        if(window.player) {
+                            const pPos = player.position.clone();
+                            scene.remove(player);
+                            window.player = gltf.scene;
+                            window.player.position.copy(pPos);
+                            window.player.scale.set(8,8,8);
+                            scene.add(player);
+                            alert("Skin alterada com sucesso!");
+                        }
+                    }
+                });
+            }
+        }
+    }
+})();
