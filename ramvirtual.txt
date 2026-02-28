@@ -1,0 +1,96 @@
+(function() {
+    const IP_CELULAR = "192.168.1.100"; 
+    const URL_BASE = `http://${IP_CELULAR}:8080/`;
+
+    // 1. INTERFACE LATERAL (LIMPA E RÁPIDA)
+    const sideBar = document.createElement('div');
+    sideBar.style.cssText = "position:fixed; right:0; top:0; width:260px; height:100%; background:#0a0a0a; color:#0f0; z-index:20000; display:none; border-left:2px solid #0f0; font-family:monospace; padding:15px; overflow-y:auto;";
+    sideBar.innerHTML = `<h2 style="font-size:14px; text-align:center;">NEURAL LINK ON</h2><hr><div id="neural-list"></div>`;
+    document.body.appendChild(sideBar);
+
+    const btn = document.createElement('button');
+    btn.innerHTML = "⚡ DRIVE";
+    btn.style.cssText = "position:fixed; right:10px; top:10px; z-index:20001; background:#0f0; color:#000; border:none; padding:10px; font-weight:bold; border-radius:5px;";
+    document.body.appendChild(btn);
+
+    btn.onclick = () => {
+        sideBar.style.display = sideBar.style.display === 'none' ? 'block' : 'none';
+        if(sideBar.style.display === 'block') loadDrive();
+    };
+
+    // 2. CONEXÃO COM O "PROCESSADOR" (TERMUX)
+    async function loadDrive() {
+        const list = document.getElementById('neural-list');
+        try {
+            const res = await fetch(URL_BASE);
+            const html = await res.text();
+            const doc = new DOMParser().parseFromString(html, 'text/html');
+            const links = Array.from(doc.querySelectorAll('a'));
+            list.innerHTML = "";
+
+            links.forEach(l => {
+                const name = l.innerText;
+                if(name.includes("/") || name.startsWith("..")) return;
+                
+                const item = document.createElement('div');
+                item.style.cssText = "padding:10px; margin-bottom:5px; background:#111; border:1px solid #0f0; cursor:pointer; font-size:11px;";
+                item.innerHTML = `> ${name}`;
+                item.onclick = () => processNeural(name);
+                list.appendChild(item);
+            });
+        } catch(e) { list.innerHTML = "OFFLINE"; }
+    }
+
+    // 3. O SEGREDO: DIVISÃO DE CARGA (OFFLOADING)
+    function processNeural(name) {
+        const url = URL_BASE + encodeURIComponent(name);
+        
+        if(name.endsWith('.mp3')) {
+            let a = document.getElementById('siri-audio') || document.createElement('audio');
+            a.id = 'siri-audio'; a.src = url; a.play();
+            alert("Streaming Audio...");
+        }
+
+        if(name.endsWith('.glb')) {
+            console.log("Iniciando Processamento Híbrido...");
+            if(window.loaderGLTF) {
+                loaderGLTF.load(url, (gltf) => {
+                    const model = gltf.scene;
+
+                    // AQUI A MÁGICA: Otimização de Memória para "RAM Virtual"
+                    model.traverse(node => {
+                        if(node.isMesh) {
+                            // 1. Instanciamento: Reduz o uso de CPU da TV
+                            node.geometry.computeBoundingSphere();
+                            // 2. Desativar Matrix AutoUpdate (A TV não precisa calcular o que o celular já enviou)
+                            node.matrixAutoUpdate = false;
+                            node.updateMatrix();
+                            // 3. Material Low-Overhead (Remove reflexos pesados)
+                            if(node.material) {
+                                node.material.precision = "lowp";
+                                node.material.powerPreference = "high-performance";
+                            }
+                        }
+                    });
+
+                    const isMap = confirm("MAPA (OK) ou SKIN (CANCEL)?");
+                    if(isMap) {
+                        if(window.mapModel) scene.remove(mapModel);
+                        window.mapModel = model;
+                        window.mapModel.scale.set(30,30,30);
+                        scene.add(window.mapModel);
+                    } else {
+                        if(window.player) {
+                            const pPos = player.position.clone();
+                            scene.remove(player);
+                            window.player = model;
+                            window.player.position.copy(pPos);
+                            window.player.scale.set(8,8,8);
+                            scene.add(window.player);
+                        }
+                    }
+                });
+            }
+        }
+    }
+})();
