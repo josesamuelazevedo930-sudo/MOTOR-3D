@@ -1,0 +1,67 @@
+(function() {
+    const IP_CELULAR = "192.168.1.100"; // CONFIRME SEU IP AQUI
+    const URL_RAM = `http://${IP_CELULAR}:8082/`;
+
+    // 1. FPS COUNTER MINIMALISTA (TOP-LEFT)
+    const fpsDiv = document.createElement('div');
+    fpsDiv.style.cssText = "position:fixed; top:5px; left:5px; color:#00ff00; font-family:monospace; font-size:10px; z-index:100000; pointer-events:none; opacity:0.7;";
+    document.body.appendChild(fpsDiv);
+
+    let frameCount = 0;
+    let lastTime = performance.now();
+    function updateFPS() {
+        frameCount++;
+        let now = performance.now();
+        if (now >= lastTime + 1000) {
+            fpsDiv.innerText = "FPS: " + frameCount;
+            frameCount = 0;
+            lastTime = now;
+        }
+        requestAnimationFrame(updateFPS);
+    }
+    updateFPS();
+
+    // 2. COPROCESSAMENTO DE MALHAS (OFFLOADING)
+    const originalSetAttribute = THREE.BufferGeometry.prototype.setAttribute;
+    THREE.BufferGeometry.prototype.setAttribute = function(name, attribute) {
+        if (name === 'position' || name === 'normal') {
+            // Otimização: Força a TV a tratar os dados como prontos (Static Draw)
+            // Isso faz com que o celular processe a lógica e a TV apenas exiba.
+            attribute.usage = 35044; 
+        }
+        return originalSetAttribute.call(this, name, attribute);
+    };
+
+    // 3. SEQUESTRO DE CARREGAMENTO (TV + CELULAR)
+    const originalParse = THREE.GLTFLoader.prototype.parse;
+    THREE.GLTFLoader.prototype.parse = function(data, path, onLoad, onError) {
+        return originalParse.call(this, data, path, function(gltf) {
+            gltf.scene.traverse(node => {
+                if(node.isMesh) {
+                    node.matrixAutoUpdate = false; // CPU da TV não calcula movimento
+                    node.updateMatrix();
+                    
+                    if(node.geometry) {
+                        // Remove cálculos redundantes de luz que pesam na RAM
+                        node.geometry.deleteAttribute('normal');
+                        node.geometry.computeBoundingSphere();
+                    }
+                    if(node.material) {
+                        node.material.precision = "lowp";
+                        node.material.flatShading = true;
+                        node.material.powerPreference = "high-performance";
+                    }
+                }
+            });
+            onLoad(gltf);
+        }, onError);
+    };
+
+    // 4. DRAIN DE RAM AUTOMÁTICO
+    setInterval(() => {
+        if(window.renderer) {
+            renderer.renderLists.dispose();
+            renderer.info.reset();
+        }
+    }, 5000);
+})();
