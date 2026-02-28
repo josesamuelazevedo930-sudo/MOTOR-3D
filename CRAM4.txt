@@ -1,0 +1,64 @@
+(function() {
+    const IP_CELULAR = "192.168.1.100"; // CONFIRME SEU IP AQUI
+    const PORTA = "8083"; 
+    const URL_RAM = `http://${IP_CELULAR}:${PORTA}/`;
+
+    // 1. FPS COUNTER DISCRETO (TOP-LEFT)
+    const fpsDiv = document.createElement('div');
+    fpsDiv.style.cssText = "position:fixed; top:2px; left:2px; color:#00ff00; font-family:monospace; font-size:9px; z-index:100000; pointer-events:none; opacity:0.5;";
+    document.body.appendChild(fpsDiv);
+
+    let frameCount = 0, lastTime = performance.now();
+    function update() {
+        frameCount++;
+        let now = performance.now();
+        if (now >= lastTime + 1000) {
+            fpsDiv.innerText = frameCount + " FPS";
+            frameCount = 0; lastTime = now;
+        }
+        requestAnimationFrame(update);
+    }
+    update();
+
+    // 2. COPROCESSAMENTO DE GEOMETRIA (O CELULAR ASSUME A CARGA)
+    const originalSet = THREE.BufferGeometry.prototype.setAttribute;
+    THREE.BufferGeometry.prototype.setAttribute = function(name, attribute) {
+        if (name === 'position' || name === 'normal') {
+            // "Static Draw" - Força a TV a aceitar o dado como pronto, sem re-processar
+            attribute.usage = 35044; 
+        }
+        return originalSet.call(this, name, attribute);
+    };
+
+    // 3. SEQUESTRO DE MALHAS 3D
+    const originalParse = THREE.GLTFLoader.prototype.parse;
+    THREE.GLTFLoader.prototype.parse = function(data, path, onLoad, onError) {
+        return originalParse.call(this, data, path, function(gltf) {
+            gltf.scene.traverse(node => {
+                if(node.isMesh) {
+                    node.matrixAutoUpdate = false; // CPU da TV livre de cálculos de posição
+                    node.updateMatrix();
+                    
+                    if(node.geometry) {
+                        // O celular "mastiga" a luz e a TV só exibe a forma
+                        node.geometry.deleteAttribute('normal');
+                        node.geometry.computeBoundingSphere();
+                    }
+                    if(node.material) {
+                        node.material.precision = "lowp";
+                        node.material.powerPreference = "high-performance";
+                    }
+                }
+            });
+            onLoad(gltf);
+        }, onError);
+    };
+
+    // 4. LIMPEZA AUTOMÁTICA DE RAM
+    setInterval(() => {
+        if(window.renderer) {
+            renderer.renderLists.dispose();
+            renderer.info.reset();
+        }
+    }, 5000);
+})();
