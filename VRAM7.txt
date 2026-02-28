@@ -1,0 +1,63 @@
+(function() {
+    const IP_CELULAR = "192.168.1.100"; // CONFIRME SEU IP NO TERMUX
+    const URL_MOTOR = `http://${IP_CELULAR}:8082/`;
+
+    // PAINEL NEURAL (TOP-RIGHT)
+    const log = document.createElement('div');
+    log.style.cssText = "position:fixed; top:10px; right:10px; width:280px; height:180px; background:rgba(20,0,0,0.9); color:#ff3300; font-family:monospace; font-size:11px; padding:15px; z-index:100000; border:2px solid #ff3300; border-radius:12px; box-shadow:0 0 25px #000; pointer-events:none; line-height:1.6;";
+    document.body.appendChild(log);
+
+    function addLog(msg, color = "#ff3300") {
+        const line = document.createElement('div');
+        line.innerHTML = `<span style="color:${color}">#</span> ${msg}`;
+        log.insertBefore(line, log.firstChild);
+        if (log.childNodes.length > 10) log.removeChild(log.lastChild);
+    }
+
+    addLog("SIRI NEURAL: RAM VIRTUAL ATIVA");
+
+    // INTERCEPTADOR DE MOTOR (OFFLOADING REAL)
+    const originalLoader = THREE.GLTFLoader.prototype.load;
+    THREE.GLTFLoader.prototype.load = function(url, callback) {
+        addLog("CELULAR: PROCESSANDO GEOMETRIA...");
+        
+        // A TV baixa o arquivo, mas o Celular assume a gestão do Buffer
+        originalLoader.call(this, url, function(gltf) {
+            const model = gltf.scene;
+
+            model.traverse(node => {
+                if(node.isMesh) {
+                    // 1. DESLIGA A CPU DA TV (Congela a matriz)
+                    node.matrixAutoUpdate = false;
+                    node.updateMatrix();
+
+                    // 2. ALÍVIO DE MATERIAL (O Celular remove o cálculo de sombra)
+                    if(node.material) {
+                        node.material.precision = "lowp";
+                        // Mantém a cor mas mata o cálculo de luz que trava a TV
+                        node.material.transparent = false;
+                        node.material.flatShading = true;
+                    }
+
+                    // 3. LIMPEZA DE BUFFER (O segredo para não travar)
+                    if(node.geometry) {
+                        node.geometry.deleteAttribute('normal'); 
+                        node.geometry.computeBoundingSphere();
+                    }
+                }
+            });
+
+            addLog("LINK: PROCESSO CONCLUÍDO PELO CELULAR", "#00ff41");
+            callback(gltf);
+        });
+    };
+
+    // LIMPEZA AGRESSIVA DE CACHE INTERNO
+    setInterval(() => {
+        if(window.renderer) {
+            renderer.renderLists.dispose();
+            renderer.info.reset();
+            addLog("RAM TV: CACHE ESVAZIADO");
+        }
+    }, 4000);
+})();
