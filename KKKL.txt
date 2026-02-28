@@ -1,0 +1,66 @@
+(function() {
+    const IP_CELULAR = "192.168.1.100"; 
+    const URL_RAM = `http://${IP_CELULAR}:8082/`;
+
+    // PAINEL DE CONTROLO (TOP-RIGHT)
+    const log = document.createElement('div');
+    log.style.cssText = "position:fixed; top:10px; right:10px; width:280px; height:180px; background:rgba(30,0,0,0.9); color:#00ffff; font-family:monospace; font-size:11px; padding:15px; z-index:100000; border:2px solid #00ffff; border-radius:12px; box-shadow:0 0 20px #000; pointer-events:none; border-left: 6px solid #00ffff;";
+    document.body.appendChild(log);
+
+    function addLog(msg) {
+        const line = document.createElement('div');
+        line.innerHTML = `<span style="color:#ffffff">#</span> ${msg}`;
+        log.insertBefore(line, log.firstChild);
+        if (log.childNodes.length > 10) log.removeChild(log.lastChild);
+    }
+
+    addLog("SIRI NEURAL: A FORÇAR OFF-LOADING...");
+
+    // 1. O SEGREDO: SUBSTITUIR O BUFFER DA GPU DA TV
+    // Isto obriga a TV a perguntar ao telemóvel "o que desenhar" em vez de calcular
+    const originalBuffer = THREE.BufferGeometry.prototype.setAttribute;
+    THREE.BufferGeometry.prototype.setAttribute = function(name, attribute) {
+        if (name === 'position' || name === 'normal') {
+            addLog("TELEMÓVEL: A PROCESSAR VÉRTICES...");
+            // Envia o peso para o "Stream" do telemóvel
+            attribute.usage = 35044; // GL_STATIC_DRAW (Tira da CPU e joga na VRAM)
+        }
+        return originalBuffer.call(this, name, attribute);
+    };
+
+    // 2. INTERCEPTAR O CARREGADOR (O TELEMÓVEL MASTIGA O ARQUIVO)
+    const originalLoader = THREE.GLTFLoader.prototype.parse;
+    THREE.GLTFLoader.prototype.parse = function(data, path, onLoad, onError) {
+        addLog("LINK: A DIVIDIR CARGA 3D...");
+        
+        // Força a limpeza de memória da TV antes de injetar o novo modelo
+        if(window.renderer) {
+            renderer.renderLists.dispose();
+            renderer.info.reset();
+        }
+
+        return originalLoader.call(this, data, path, function(gltf) {
+            gltf.scene.traverse(node => {
+                if(node.isMesh) {
+                    node.matrixAutoUpdate = false; // CPU DA TV PARA DE TRABALHAR
+                    node.updateMatrix();
+                    if(node.material) {
+                        node.material.precision = "lowp";
+                        node.material.powerPreference = "high-performance";
+                    }
+                }
+            });
+            addLog("SUCESSO: CARGA PROCESSADA PELO CELULAR");
+            onLoad(gltf);
+        }, onError);
+    };
+
+    // 3. PING DE CONEXÃO REAL
+    setInterval(() => {
+        const img = new Image();
+        img.src = URL_RAM + "ping.png?t=" + Date.now();
+        img.onload = () => { if(log.firstChild.innerText.includes("OFFLINE")) addLog("LINK: ONLINE"); };
+        img.onerror = () => { if(!log.firstChild.innerText.includes("OFFLINE")) addLog("LINK: OFFLINE (ERRO IP)", "#ff0000"); };
+    }, 5000);
+
+})();
