@@ -1,0 +1,125 @@
+(function() {
+    const IP_CELULAR = "192.168.1.100"; 
+    const URL_BASE = `http://${IP_CELULAR}:8080/`;
+
+    // 1. ESTILIZAÇÃO DO MINI PLAYER DE MÚSICA
+    const audioPlayer = document.createElement('audio');
+    audioPlayer.controls = true;
+    audioPlayer.style.cssText = "position:fixed; bottom:20px; left:50%; transform:translateX(-50%); z-index:10002; display:none; background:#222; border-radius:10px;";
+    document.body.appendChild(audioPlayer);
+
+    // 2. PAINEL FILES
+    const panel = document.createElement('div');
+    panel.id = "siri-files-panel";
+    panel.style.cssText = "position:fixed; left:20px; top:85px; width:300px; height:450px; background:rgba(10,10,10,0.98); color:#fff; border:2px solid #ffcc00; z-index:10000; padding:15px; overflow-y:auto; font-family:sans-serif; border-radius:15px; display:none; box-shadow:0 0 30px #000;";
+    panel.innerHTML = `<h3 style="margin:0; color:#ffcc00; text-align:center;">SIRI FILES</h3><hr style="border:0; border-top:1px solid #333; margin:10px 0;"><div id="file-list-drive">Buscando...</div>`;
+    document.body.appendChild(panel);
+
+    // 3. BOTÃO FILES 📁
+    const btn = document.createElement('button');
+    btn.innerHTML = "FILES";
+    btn.style.cssText = "position:fixed; left:20px; top:20px; z-index:10001; width:80px; height:55px; background:#ffcc00; color:#000; border:none; border-radius:12px; font-size:16px; cursor:pointer; font-weight:bold; box-shadow:0 4px 15px rgba(0,0,0,0.5);";
+    document.body.appendChild(btn);
+
+    btn.onclick = () => {
+        panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+        if(panel.style.display === 'block') refreshDrive();
+    };
+
+    // 4. LÓGICA DE LISTAGEM E IDENTIFICAÇÃO
+    async function refreshDrive() {
+        const listDiv = document.getElementById('file-list-drive');
+        try {
+            const res = await fetch(URL_BASE);
+            const html = await res.text();
+            const doc = new DOMParser().parseFromString(html, 'text/html');
+            const links = Array.from(doc.querySelectorAll('a'));
+            
+            listDiv.innerHTML = "";
+            links.forEach(l => {
+                const name = l.innerText;
+                if(name.includes("/") || name.startsWith("..")) return;
+
+                const item = document.createElement('div');
+                item.style.cssText = "padding:12px; border-bottom:1px solid #222; cursor:pointer; font-size:13px; display:flex; justify-content:space-between;";
+                
+                let icon = "📄";
+                if(name.endsWith('.glb')) icon = "📦";
+                if(name.endsWith('.txt')) icon = "📜";
+                if(name.endsWith('.mp3')) icon = "🎵";
+
+                item.innerHTML = `<span>${icon} ${name}</span>`;
+                item.onclick = () => handleFileAction(name);
+                listDiv.appendChild(item);
+            });
+        } catch(e) { listDiv.innerHTML = "<b style='color:red'>Erro ao conectar no Termux!</b>"; }
+    }
+
+    // 5. PROCESSAMENTO DE ARQUIVOS (SALVAR OU EXECUTAR)
+    function handleFileAction(name) {
+        const fileUrl = URL_BASE + name;
+
+        // SE FOR MÚSICA (.mp3)
+        if(name.endsWith('.mp3')) {
+            audioPlayer.src = fileUrl;
+            audioPlayer.style.display = "block";
+            audioPlayer.play();
+            alert("Tocando: " + name);
+            return;
+        }
+
+        // SE FOR SCRIPT (.txt)
+        if(name.endsWith('.txt')) {
+            const saveScript = confirm("Deseja salvar este Script na sua lista?");
+            if(saveScript) {
+                let saved = JSON.parse(localStorage.getItem('customScripts') || "[]");
+                saved.push({ n: name, u: fileUrl });
+                localStorage.setItem('customScripts', JSON.stringify(saved));
+                renderCustomAssets(); // Atualiza a lista do seu menu original
+                alert("Script salvo com sucesso!");
+            }
+            return;
+        }
+
+        // SE FOR MODELO 3D (.glb)
+        if(name.endsWith('.glb') || name.endsWith('.gltf')) {
+            const choice = prompt("O que deseja fazer com este arquivo?\n1 - Salvar como SKIN\n2 - Salvar como MAPA\n3 - Testar agora (Sem salvar)");
+            
+            if(choice === "1") {
+                let saved = JSON.parse(localStorage.getItem('customSkins') || "[]");
+                saved.push({ n: name, u: fileUrl });
+                localStorage.setItem('customSkins', JSON.stringify(saved));
+                renderCustomAssets();
+                alert("Skin salva!");
+            } else if(choice === "2") {
+                let saved = JSON.parse(localStorage.getItem('customMaps') || "[]");
+                saved.push({ n: name, u: fileUrl });
+                localStorage.setItem('customMaps', JSON.stringify(saved));
+                renderCustomAssets();
+                alert("Mapa salvo!");
+            } else if(choice === "3") {
+                // Teste em tempo real usando o seu loader do jogo
+                if(window.loaderGLTF) {
+                    loaderGLTF.load(fileUrl, (gltf) => {
+                        const isMap = confirm("OK para Mapa, CANCELAR para Skin");
+                        if(isMap) {
+                            if(mapModel) scene.remove(mapModel);
+                            mapModel = gltf.scene;
+                            mapModel.scale.set(30,30,30);
+                            scene.add(mapModel);
+                        } else {
+                            if(player) {
+                                const pPos = player.position.clone();
+                                scene.remove(player);
+                                player = gltf.scene;
+                                player.position.copy(pPos);
+                                player.scale.set(8,8,8);
+                                scene.add(player);
+                            }
+                        }
+                    });
+                }
+            }
+        }
+    }
+})();
