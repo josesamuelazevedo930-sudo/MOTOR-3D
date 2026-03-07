@@ -1,0 +1,116 @@
+// 1. Criar o Container da Interface
+const gui = document.createElement('div');
+gui.id = "hack-gui";
+gui.style = `
+    position: fixed;
+    top: 50px;
+    left: 20px;
+    width: 280px;
+    height: 400px;
+    background: rgba(15, 15, 15, 0.9);
+    backdrop-filter: blur(10px);
+    border: 1px solid #333;
+    border-radius: 12px;
+    color: white;
+    font-family: 'Segoe UI', sans-serif;
+    display: none;
+    flex-direction: column;
+    z-index: 10000;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    overflow: hidden;
+`;
+
+// 2. Cabeçalho (Botão de Fechar)
+const header = document.createElement('div');
+header.style = "padding: 15px; background: #222; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #444;";
+header.innerHTML = `<span style="font-weight: bold; color: #00ff88;">SIRI CASCUDO HACK v1</span>
+                    <button id="close-gui" style="background:none; border:none; color:white; cursor:pointer;">✕</button>`;
+gui.appendChild(header);
+
+// 3. Área de Opções com Scroll
+const content = document.createElement('div');
+content.style = "padding: 10px; overflow-y: auto; flex: 1;";
+gui.appendChild(content);
+
+// 4. Botão Flutuante para Abrir (Invisível/Discreto)
+const openBtn = document.createElement('button');
+openBtn.innerText = "H";
+openBtn.style = "position:fixed; top:10px; left:10px; width:30px; height:30px; border-radius:50%; background:rgba(0,0,0,0.5); color:#00ff88; border:1px solid #00ff88; z-index:9999; cursor:pointer;";
+document.body.appendChild(openBtn);
+
+document.body.appendChild(gui);
+
+// Funções de Gerenciamento
+const tglGui = () => gui.style.display = gui.style.display === 'none' ? 'flex' : 'none';
+openBtn.onclick = tglGui;
+document.getElementById('close-gui').onclick = tglGui;
+
+// 5. Função para Adicionar Opções ao Hack
+function addHackOption(name, action, color = "#444") {
+    const btn = document.createElement('button');
+    btn.innerText = name;
+    btn.style = `
+        width: 100%;
+        padding: 12px;
+        margin-bottom: 8px;
+        background: ${color};
+        border: none;
+        border-radius: 6px;
+        color: white;
+        text-align: left;
+        font-size: 13px;
+        cursor: pointer;
+        transition: 0.2s;
+    `;
+    btn.onmouseover = () => btn.style.filter = "brightness(1.2)";
+    btn.onmouseout = () => btn.style.filter = "brightness(1.0)";
+    btn.onclick = action;
+    content.appendChild(btn);
+}
+
+// --- ADICIONANDO AS FUNÇÕES DO PAINEL ---
+
+addHackOption("🚀 VELOCIDADE FLASH", () => {
+    window.moveSpeed = 3.5;
+    alert("Velocidade aumentada!");
+}, "#ff8800");
+
+addHackOption("☁️ GRAVIDADE ZERO", () => {
+    window.fly = true;
+    window.velY = 0;
+    alert("Voo ativado!");
+}, "#007bff");
+
+addHackOption("🌙 GRAVIDADE LUNAR", () => {
+    // Modifica a função de animação original para cair devagar
+    const oldAnim = window.animate;
+    window.animate = function() {
+        if(!fly && player) velY += 0.02; // Alivia a gravidade
+        oldAnim();
+    };
+}, "#6610f2");
+
+addHackOption("👻 ATRAVESSAR CHÃO (OFF)", () => {
+    // Desativa a colisão do Raycaster
+    window.mapModel = null;
+    alert("Colisão desativada! Cuidado para não cair no vazio.");
+}, "#dc3545");
+
+addHackOption("💎 TAMANHO GIGANTE", () => {
+    if(player) player.scale.multiplyScalar(3);
+}, "#28a745");
+
+addHackOption("🐜 TAMANHO FORMIGA", () => {
+    if(player) player.scale.multiplyScalar(0.2);
+}, "#28a745");
+
+addHackOption("🔄 RECOMEÇAR (RESPAWN)", () => {
+    window.respawn();
+}, "#444");
+
+addHackOption("🗑️ REMOVER TUDO", () => {
+    gui.remove();
+    openBtn.remove();
+}, "#111");
+
+console.log("PAINEL HACK CARREGADO!");
