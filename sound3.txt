@@ -1,0 +1,69 @@
+(function() {
+    if (!window.camera || !window.player) return;
+
+    // Listener de Áudio
+    var listener = new THREE.AudioListener();
+    window.camera.add(listener);
+
+    // Contexto de Áudio para desbloqueio
+    var audioCtx = listener.context;
+
+    // --- SOM AMBIENTE (Ruído de Vento/Mar Sintetizado) ---
+    var bufferSize = 2 * audioCtx.sampleRate,
+        noiseBuffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate),
+        output = noiseBuffer.getChannelData(0);
+    for (var i = 0; i < bufferSize; i++) {
+        output[i] = Math.random() * 2 - 1;
+    }
+
+    var whiteNoise = new THREE.Audio(listener);
+    whiteNoise.setBuffer(noiseBuffer);
+    whiteNoise.setLoop(true);
+    whiteNoise.setVolume(0.05); // Som de fundo bem suave
+
+    // --- SOM DE PASSOS (Sintetizado) ---
+    var stepBuffer = audioCtx.createBuffer(1, audioCtx.sampleRate * 0.1, audioCtx.sampleRate),
+        stepData = stepBuffer.getChannelData(0);
+    for (var j = 0; j < stepData.length; j++) {
+        stepData[j] = Math.random() * Math.exp(-j / 500);
+    }
+
+    var footstepSound = new THREE.Audio(listener);
+    footstepSound.setBuffer(stepBuffer);
+    footstepSound.setVolume(0.2);
+
+    // --- LÓGICA DE EXECUÇÃO ---
+    var stepInterval = 0;
+
+    function audioLoop() {
+        var isMoving = !!(window.keys["KeyW"] || window.keys["KeyS"] || window.keys["KeyA"] || window.keys["KeyD"]);
+        
+        if (isMoving && window.grounded && !window.fly) {
+            stepInterval++;
+            if (stepInterval >= 22) {
+                if (footstepSound.isPlaying) footstepSound.stop();
+                footstepSound.play();
+                stepInterval = 0;
+            }
+        } else {
+            stepInterval = 0;
+        }
+        requestAnimationFrame(audioLoop);
+    }
+
+    // Função para desbloquear o áudio no primeiro clique
+    function unlock() {
+        if (audioCtx.state === 'suspended') {
+            audioCtx.resume();
+        }
+        whiteNoise.play();
+        window.removeEventListener('mousedown', unlock);
+        window.removeEventListener('touchstart', unlock);
+        console.log("Áudio Desbloqueado");
+    }
+
+    window.addEventListener('mousedown', unlock);
+    window.addEventListener('touchstart', unlock);
+
+    audioLoop();
+})();
