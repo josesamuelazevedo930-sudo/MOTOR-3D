@@ -1,0 +1,41 @@
+// Importa biblioteca MQTT via CDN
+const mqttScript = document.createElement('script');
+mqttScript.src = "https://unpkg.com/mqtt/dist/mqtt.min.js";
+document.head.appendChild(mqttScript);
+
+mqttScript.onload = () => {
+    // Conecta ao broker público (Use um ID único para não interferir com outros)
+    const client = mqtt.connect('wss://broker.emqx.io:8084/mqtt');
+    const topic = "siri_cascudo_control_12345"; // MUDE ESTE ID PARA UM ÚNICO
+
+    client.on('connect', () => {
+        console.log("Conectado ao Broker MQTT!");
+        alert("Controle pareado! Use o celular agora.");
+    });
+
+    client.subscribe(topic);
+
+    client.on('message', (t, msg) => {
+        const data = JSON.parse(msg.toString());
+
+        // 1. Movimentação (Simula as teclas KeyW, KeyS, etc)
+        if (data.type === 'move') {
+            keys['KeyW'] = data.y < -0.2;
+            keys['KeyS'] = data.y > 0.2;
+            keys['KeyA'] = data.x < -0.2;
+            keys['KeyD'] = data.x > 0.2;
+        }
+
+        // 2. Visão (Altera camRot e camDist)
+        if (data.type === 'look') {
+            camRot += data.x * 0.05;
+            camDist = Math.max(10, camDist + data.y * 2);
+        }
+
+        // 3. Ações
+        if (data.type === 'action') {
+            if (data.btn === 'jump') jump();
+            if (data.btn === 'respawn') respawn();
+        }
+    });
+};
