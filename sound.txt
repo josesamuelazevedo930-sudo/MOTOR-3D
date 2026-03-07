@@ -1,0 +1,53 @@
+(function() {
+    // Verifica se os objetos essenciais do jogo existem
+    if (!window.camera || !window.player) return;
+
+    const listener = new THREE.AudioListener();
+    window.camera.add(listener);
+
+    const audioLoader = new THREE.AudioLoader();
+
+    // 1. Som Ambiente (Oceano/Vento)
+    const ambientSound = new THREE.Audio(listener);
+    audioLoader.load('https://api.mixkit.co/download/sfx/ocean-waves-ambient-1188.wav', (buffer) => {
+        ambientSound.setBuffer(buffer);
+        ambientSound.setLoop(true);
+        ambientSound.setVolume(0.4);
+        ambientSound.play();
+    });
+
+    // 2. Som de Passos
+    const footstepSound = new THREE.Audio(listener);
+    let stepInterval = 0;
+
+    audioLoader.load('https://api.mixkit.co/download/sfx/walking-on-grass-344.wav', (buffer) => {
+        footstepSound.setBuffer(buffer);
+        footstepSound.setVolume(0.6);
+        footstepSound.setPlaybackRate(1.2);
+    });
+
+    // 3. Lógica de Detecção de Movimento
+    function updateAudio() {
+        // Detecta se o jogador está se movendo usando suas variáveis globais
+        const isMoving = window.keys['KeyW'] || window.keys['KeyS'] || window.keys['KeyA'] || window.keys['KeyD'];
+        
+        // Regra: Movendo + No Chão + Não voando
+        if (isMoving && window.grounded && !window.fly) {
+            stepInterval++;
+            
+            // Toca o som de passo ritmado
+            if (stepInterval >= 22) {
+                if (footstepSound.isPlaying) footstepSound.stop();
+                footstepSound.play();
+                stepInterval = 0;
+            }
+        } else {
+            stepInterval = 0;
+        }
+
+        requestAnimationFrame(updateAudio);
+    }
+
+    updateAudio();
+    console.log("Áudio ambiente e passos ativados.");
+})();
