@@ -1,0 +1,102 @@
+// 1. Criar Interface de Otimização
+const perfGui = document.createElement('div');
+perfGui.id = "perf-gui";
+perfGui.style = `
+    position: fixed;
+    top: 10px;
+    left: 10px;
+    width: 200px;
+    background: rgba(0, 0, 0, 0.85);
+    border: 1px solid #0f0;
+    border-radius: 8px;
+    color: #0f0;
+    font-family: monospace;
+    font-size: 11px;
+    z-index: 10001;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+`;
+
+// Monitor de FPS Simples
+const fpsDisplay = document.createElement('div');
+fpsDisplay.style = "font-weight: bold; border-bottom: 1px solid #333; padding-bottom: 5px; margin-bottom: 5px;";
+perfGui.appendChild(fpsDisplay);
+
+let lastTime = performance.now();
+let frames = 0;
+function updateFPS() {
+    frames++;
+    const now = performance.now();
+    if (now >= lastTime + 1000) {
+        fpsDisplay.innerText = "FPS: " + frames;
+        frames = 0;
+        lastTime = now;
+    }
+    requestAnimationFrame(updateFPS);
+}
+updateFPS();
+
+// Função Auxiliar para Criar Botões de Ajuste
+function createPerfBtn(label, action) {
+    const b = document.createElement('button');
+    b.innerText = label;
+    b.style = "background: #222; color: #0f0; border: 1px solid #444; padding: 5px; cursor: pointer; font-size: 10px; text-align: left;";
+    b.onclick = action;
+    perfGui.appendChild(b);
+}
+
+// --- OPÇÕES DE GRÁFICOS ---
+
+createPerfBtn("LOW RES (0.5x)", () => {
+    renderer.setPixelRatio(0.5);
+    alert("Resolução reduzida para performance.");
+});
+
+createPerfBtn("HIGH RES (1.0x)", () => {
+    renderer.setPixelRatio(window.devicePixelRatio || 1);
+});
+
+createPerfBtn("REMOVER TEXTURAS MAPA", () => {
+    if (mapModel) {
+        mapModel.traverse((node) => {
+            if (node.isMesh) {
+                // Substitui a textura por uma cor sólida cinza
+                node.material = new THREE.MeshBasicMaterial({ color: 0x888888 });
+            }
+        });
+        alert("Texturas do mapa removidas.");
+    }
+});
+
+createPerfBtn("MODO WIREFRAME", () => {
+    if (mapModel) {
+        mapModel.traverse((node) => {
+            if (node.isMesh) {
+                node.material.wireframe = !node.material.wireframe;
+            }
+        });
+    }
+});
+
+createPerfBtn("DESATIVAR ANTIALIAS", () => {
+    // Nota: Em Three.js o antialias é definido na criação, 
+    // mas podemos forçar o filtro de texturas para 'Nearest'
+    if (mapModel) {
+        mapModel.traverse((node) => {
+            if (node.isMesh && node.material.map) {
+                node.material.map.minFilter = THREE.NearestFilter;
+                node.material.map.magFilter = THREE.NearestFilter;
+                node.material.map.needsUpdate = true;
+            }
+        });
+    }
+});
+
+createPerfBtn("FECHAR PAINEL", () => {
+    perfGui.remove();
+});
+
+document.body.appendChild(perfGui);
+console.log("Painel de Performance Carregado com Sucesso.");
