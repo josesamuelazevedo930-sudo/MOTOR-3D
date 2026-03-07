@@ -1,0 +1,49 @@
+(function() {
+    if (!window.camera || !window.player) return;
+
+    // Garante que o Listener não seja duplicado ao reexecutar o script
+    if (window.camera.userData.hasAudio) return;
+    window.camera.userData.hasAudio = true;
+
+    var listener = new THREE.AudioListener();
+    window.camera.add(listener);
+
+    var audioLoader = new THREE.AudioLoader();
+    var ambientSound = new THREE.Audio(listener);
+    var footstepSound = new THREE.Audio(listener);
+    var stepInterval = 0;
+
+    // Carregar Som Ambiente (Oceano)
+    audioLoader.load("https://api.mixkit.co/download/sfx/ocean-waves-ambient-1188.wav", function(buffer) {
+        ambientSound.setBuffer(buffer);
+        ambientSound.setLoop(true);
+        ambientSound.setVolume(0.4);
+        ambientSound.play();
+    });
+
+    // Carregar Som de Passos
+    audioLoader.load("https://api.mixkit.co/download/sfx/walking-on-grass-344.wav", function(buffer) {
+        footstepSound.setBuffer(buffer);
+        footstepSound.setVolume(0.6);
+        footstepSound.setPlaybackRate(1.2);
+    });
+
+    function updateAudioLoop() {
+        var isMoving = !!(window.keys["KeyW"] || window.keys["KeyS"] || window.keys["KeyA"] || window.keys["KeyD"]);
+        
+        if (isMoving && window.grounded && !window.fly) {
+            stepInterval++;
+            if (stepInterval >= 22) {
+                if (footstepSound.isPlaying) footstepSound.stop();
+                footstepSound.play();
+                stepInterval = 0;
+            }
+        } else {
+            stepInterval = 0;
+        }
+        requestAnimationFrame(updateAudioLoop);
+    }
+
+    updateAudioLoop();
+    console.log("Audio Iniciado");
+})();
