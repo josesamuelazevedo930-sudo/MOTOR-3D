@@ -1,0 +1,96 @@
+// === SCRIPT DA TV COM PLAYLIST USB ===
+(function() {
+    if (!scene || !mapModel) {
+        alert("Aguarde o jogo carregar completamente antes de rodar o script!");
+        return;
+    }
+
+    // 1. Criar o elemento de vídeo HTML oculto
+    const video = document.createElement('video');
+    video.crossOrigin = "anonymous";
+    video.loop = false;
+    video.muted = false; // Mude para true se quiser que comece mudo
+    video.style.display = 'none';
+    document.body.appendChild(video);
+
+    // Configuração da Playlist (1 a 100)
+    let currentTrack = 1;
+    const baseUSBPath = "file:///usb/sda1/3djogo/video/";
+
+    function playVideo(index) {
+        if (index > 100) index = 1;
+        if (index < 1) index = 100;
+        currentTrack = index;
+        
+        // Força o caminho do arquivo local
+        video.src = `${baseUSBPath}${currentTrack}.mp4`;
+        video.load();
+        
+        // Tentativa de auto-play (navegadores podem barrar sem clique prévio)
+        video.play().catch(e => {
+            console.log("Clique na tela para liberar o som/vídeo devido às regras do navegador.");
+        });
+    }
+
+    // Passar de vídeo automaticamente quando um terminar
+    video.onended = () => {
+        playVideo(currentTrack + 1);
+    };
+
+    // 2. Criar a Textura de Vídeo e o Objeto 3D (A TV)
+    const videoTexture = new THREE.VideoTexture(video);
+    videoTexture.minFilter = THREE.LinearFilter;
+    videoTexture.magFilter = THREE.LinearFilter;
+
+    // Materiais da TV (Frente com vídeo, laterais pretas)
+    const tvMaterials = [
+        new THREE.MeshBasicMaterial({ color: 0x111111 }), // direita
+        new THREE.MeshBasicMaterial({ color: 0x111111 }), // esquerda
+        new THREE.MeshBasicMaterial({ color: 0x111111 }), // cima
+        new THREE.MeshBasicMaterial({ color: 0x111111 }), // baixo
+        new THREE.MeshBasicMaterial({ map: videoTexture }),// frente (tela)
+        new THREE.MeshBasicMaterial({ color: 0x111111 })  // trás
+    ];
+
+    // Caixa da TV (Largura: 20, Altura: 12, Espessura: 2)
+    const tvGeometry = new THREE.BoxGeometry(20, 12, 2);
+    const tvMesh = new THREE.Mesh(tvGeometry, tvMaterials);
+
+    // Posiciona a TV no mapa (perto do ponto de respawn inicial)
+    tvMesh.position.set(0, 15, -40); 
+    scene.add(tvMesh);
+
+    // 3. Controles Flutuantes na Tela para a TV (Avançar / Voltar)
+    const controlDiv = document.createElement('div');
+    controlDiv.style.position = 'absolute';
+    controlDiv.style.left = '20px';
+    controlDiv.style.top = '20px';
+    controlDiv.style.zIndex = '9999';
+    controlDiv.style.background = 'rgba(0,0,0,0.8)';
+    controlDiv.style.padding = '10px';
+    controlDiv.style.borderRadius = '8px';
+    controlDiv.style.color = '#fff';
+    controlDiv.style.fontFamily = 'sans-serif';
+    controlDiv.innerHTML = `
+        <div style="font-size:12px; margin-bottom:5px; text-align:center;">📺 CONTROLE DA TV</div>
+        <button id="tv-prev" style="padding:5px 10px; background:#ff3333; color:#fff; border:none; font-weight:bold; margin-right:5px; border-radius:4px;"><<</button>
+        <span id="tv-track" style="font-weight:bold; font-size:14px;">1.mp4</span>
+        <button id="tv-next" style="padding:5px 10px; background:#28a745; color:#fff; border:none; font-weight:bold; margin-left:5px; border-radius:4px;">>></button>
+    `;
+    document.body.appendChild(controlDiv);
+
+    // Eventos dos botões do controle
+    document.getElementById('tv-prev').onclick = () => {
+        playVideo(currentTrack - 1);
+        document.getElementById('tv-track').innerText = `${currentTrack}.mp4`;
+    };
+    document.getElementById('tv-next').onclick = () => {
+        playVideo(currentTrack + 1);
+        document.getElementById('tv-track').innerText = `${currentTrack}.mp4`;
+    };
+
+    // Iniciar o primeiro vídeo
+    playVideo(1);
+
+    alert("TV Adicionada no cenário! Se o vídeo não carregar, verifique as permissões de CORS do navegador para arquivos locais.");
+})();
