@@ -1,0 +1,153 @@
+// === SCRIPT DA TV CORRIGIDO 100% (RENDERIZAÇÃO NATIVA) ===
+(function() {
+    if (!scene || !mapModel || !camera || !renderer) {
+        alert("Aguarde o jogo carregar completamente antes de rodar o script!");
+        return;
+    }
+
+    // Remover TV anterior se existir para evitar duplicados
+    const oldContainer = document.getElementById('tv-video-container');
+    if(oldContainer) oldContainer.remove();
+
+    // 1. Criar a estrutura HTML da TV (Vídeo Nativo)
+    const tvContainer = document.createElement('div');
+    tvContainer.id = 'tv-video-container';
+    tvContainer.style.position = 'absolute';
+    tvContainer.style.zIndex = '10';
+    tvContainer.style.pointerEvents = 'auto'; // Permite clicar no vídeo se necessário
+    tvContainer.style.border = '6px solid #111'; // Moldura da TV
+    tvContainer.style.background = '#000';
+    tvContainer.style.boxShadow = '0 0 20px rgba(0,0,0,0.5)';
+    
+    const video = document.createElement('video');
+    video.crossOrigin = "anonymous";
+    video.loop = false;
+    video.muted = false;
+    video.style.width = '100%';
+    video.style.height = '100%';
+    video.style.display = 'block';
+    
+    tvContainer.appendChild(video);
+    document.body.appendChild(tvContainer);
+
+    // Configuração da Playlist USB (1 a 100)
+    let currentTrack = 1;
+    const baseUSBPath = "file:///usb/sda1/3djogo/video/";
+
+    function playVideo(index) {
+        if (index > 100) index = 1;
+        if (index < 1) index = 100;
+        currentTrack = index;
+        
+        video.src = `${baseUSBPath}${currentTrack}.mp4`;
+        video.load();
+        
+        video.play().catch(e => {
+            console.log("Interação necessária para tocar o vídeo.");
+        });
+    }
+
+    video.onended = () => {
+        playVideo(currentTrack + 1);
+        if(document.getElementById('tv-track')) {
+            document.getElementById('tv-track').innerText = `${currentTrack}.mp4`;
+        }
+    };
+
+    // 2. Criar uma âncora invisível no mundo 3D para rastrear a posição
+    // Usaremos uma caixa preta simples que servirá como fundo físico da TV no jogo
+    const backupGeometry = new THREE.BoxGeometry(22, 14, 2);
+    const backupMaterial = new THREE.MeshBasicMaterial({ color: 0x050505 });
+    const tvAnchor = new THREE.Mesh(backupGeometry, backupMaterial);
+    
+    // Posiciona a TV no mapa (Perto do spawn)
+    tvAnchor.position.set(0, 18, -45); 
+    scene.add(tvAnchor);
+
+    // Vetor para cálculos de projeção matemática 3D para 2D
+    const tempV = new THREE.Vector3();
+
+    // 3. Sistema de Rastreamento (Sincroniza o HTML com a Câmera do Jogo)
+    function syncTV() {
+        requestAnimationFrame(syncTV);
+        
+        if (!tvAnchor || !camera || !renderer) return;
+
+        // Pega a posição 3D da TV
+        tvAnchor.updateMatrixWorld();
+        tempV.setFromMatrixPosition(tvAnchor.matrixWorld);
+        
+        // Verifica se a TV está atrás da câmera para não bugar a tela
+        const frustum = new THREE.Frustum();
+Frustum.setFromProjectionMatrix(new THREE.Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
+        if (!frustum.containsPoint(tempV)) {
+            tvContainer.style.display = 'none';
+            return;
+        } else {
+            tvContainer.style.display = 'block';
+        }
+
+        // Projeta a posição 3D para as coordenadas 2D da tela do seu dispositivo
+        tempV.project(camera);
+
+        // Converte para pixels reais
+        const x = (tempV.x * .5 + .5) * window.innerWidth;
+        const y = (tempV.y * -.5 + .5) * window.innerHeight;
+
+        // Calcula a distância da câmera para ajustar o tamanho da TV dinamicamente (Efeito de perspectiva)
+        const dist = camera.position.distanceTo(tvAnchor.position);
+        
+        // Fórmulas de tamanho baseadas na distância
+        const baseWidth = 400; 
+        const scale = Math.max(10, (baseWidth * 30) / dist); 
+        const width = scale;
+        const height = scale * (9 / 16); // Mantém proporção 16:9
+
+        // Aplica o posicionamento milimetricamente no centro do ponto 3D
+        tvContainer.style.width = `${width}px`;
+        tvContainer.style.height = `${height}px`;
+        tvContainer.style.left = `${x - width / 2}px`;
+        tvContainer.style.top = `${y - height / 2}px`;
+    }
+    
+    // Inicia o rastreamento síncrono
+    syncTV();
+
+    // 4. Interface Física de Controle (Avançar e Voltar)
+    const oldControl = document.getElementById('tv-controls-ui');
+    if(oldControl) oldControl.remove();
+
+    const controlDiv = document.createElement('div');
+    controlDiv.id = 'tv-controls-ui';
+    controlDiv.style.position = 'absolute';
+    controlDiv.style.left = '20px';
+    controlDiv.style.top = '20px';
+    controlDiv.style.zIndex = '9999';
+    controlDiv.style.background = 'rgba(0,0,0,0.85)';
+    controlDiv.style.padding = '12px';
+    controlDiv.style.borderRadius = '8px';
+    controlDiv.style.color = '#fff';
+    controlDiv.style.fontFamily = 'sans-serif';
+    controlDiv.style.border = '1px solid #444';
+    controlDiv.innerHTML = `
+        <div style="font-size:11px; margin-bottom:6px; text-align:center; letter-spacing:1px; color:#aaa;">📺 CONTROLE DA TV</div>
+        <div style="display:flex; align-items:center; gap:8px;">
+            <button id="tv-prev" style="padding:6px 12px; background:#ff3333; color:#fff; border:none; font-weight:bold; border-radius:4px; cursor:pointer;"><<</button>
+            <span id="tv-track" style="font-weight:bold; font-size:13px; min-width:60px; text-align:center;">1.mp4</span>
+            <button id="tv-next" style="padding:6px 12px; background:#28a745; color:#fff; border:none; font-weight:bold; border-radius:4px; cursor:pointer;">>></button>
+        </div>
+    `;
+    document.body.appendChild(controlDiv);
+
+    document.getElementById('tv-prev').onclick = () => {
+        playVideo(currentTrack - 1);
+        document.getElementById('tv-track').innerText = `${currentTrack}.mp4`;
+    };
+    document.getElementById('tv-next').onclick = () => {
+        playVideo(currentTrack + 1);
+        document.getElementById('tv-track').innerText = `${currentTrack}.mp4`;
+    };
+
+    // Inicializar o primeiro vídeo da lista
+    playVideo(1);
+})();
