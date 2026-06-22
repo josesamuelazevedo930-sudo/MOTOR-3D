@@ -1,0 +1,123 @@
+(function() {
+    // 1. Criar e injetar os estilos do MP3 Player
+    const style = document.createElement('style');
+    style.innerHTML = `
+        #mp3-btn { top: 240px; background: #9933ff; }
+        #mp3-panel { position: absolute; left: 20px; top: 185px; width: 230px; background: rgba(0,0,0,0.95); border-radius: 12px; padding: 15px; color: white; border: 1px solid #9933ff; z-index: 100; display: none; max-height: 50vh; overflow-y: auto; }
+        .mp3-ctrl { display: flex; justify-content: space-between; margin-bottom: 10px; gap: 5px; }
+        .mp3-list { max-height: 30vh; overflow-y: auto; background: #222; border-radius: 6px; padding: 5px; }
+        .mp3-item { padding: 6px; margin: 2px 0; background: #333; font-size: 11px; cursor: pointer; border-radius: 4px; text-align: left; }
+        .mp3-item:hover, .mp3-item.active { background: #9933ff; }
+    `;
+    document.head.appendChild(style);
+
+    // 2. Criar o botão do Menu
+    const btn = document.createElement('button');
+    btn.id = 'mp3-btn';
+    btn.className = 'ui-btn';
+    btn.innerText = '🎵 MP3 PLAYER';
+    btn.onclick = () => {
+        let p = document.getElementById('mp3-panel');
+        let vis = p.style.display === 'block';
+        document.querySelectorAll('.panel').forEach(x => x.style.display = 'none'); // fecha outros menus
+        p.style.display = vis ? 'none' : 'block';
+    };
+    document.body.appendChild(btn);
+
+    // 3. Criar o Painel do Player
+    const panel = document.createElement('div');
+    panel.id = 'mp3-panel';
+    panel.className = 'panel';
+    panel.innerHTML = `
+        <p style="font-size:12px; margin-top:0; font-weight:bold; color:#9933ff; text-align:center;">USB MP3 PLAYER</p>
+        <div class="mp3-ctrl">
+            <button class="opt" id="mp3-prev" style="margin:0;">⏮️</button>
+            <button class="opt" id="mp3-play" style="margin:0; text-align:center;">▶️</button>
+            <button class="opt" id="mp3-next" style="margin:0;">⏭️</button>
+        </div>
+        <div style="font-size:11px; margin-bottom:8px; text-align:center;" id="mp3-current">Nenhuma música tocando</div>
+        <div class="mp3-list" id="mp3-playlist"></div>
+    `;
+    document.body.appendChild(panel);
+
+    // 4. Configuração do Áudio e Geração das 100 Músicas
+    const basePath = "file:///usb/sda1/3djogo/sound/";
+    let currentTrackIndex = 1;
+    const audio = new Audio();
+    
+    const playlistContainer = document.getElementById('mp3-playlist');
+    const playBtn = document.getElementById('mp3-play');
+    const currentTxt = document.getElementById('mp3-current');
+
+    // Força a montagem da lista de 1 a 100
+    for (let i = 1; i <= 100; i++) {
+        let item = document.createElement('div');
+        item.className = 'mp3-item';
+        item.id = `track-${i}`;
+        item.innerText = `Música ${i}.mp3`;
+        item.onclick = () => loadAndPlay(i);
+        playlistContainer.appendChild(item);
+    }
+
+    function loadAndPlay(index) {
+        // Remove destaque da anterior
+        document.querySelectorAll('.mp3-item').forEach(el => el.classList.remove('active'));
+        
+        currentTrackIndex = index;
+        const trackUrl = `${basePath}${index}.mp3`;
+        
+        // Força a leitura atualizando o src do elemento de áudio
+        audio.src = trackUrl;
+        audio.preload = "auto";
+        
+        currentTxt.innerText = `Tocando: ${index}.mp3`;
+        const activeTrack = document.getElementById(`track-${index}`);
+        if(activeTrack) {
+            activeTrack.classList.add('active');
+            activeTrack.scrollIntoView({ block: 'nearest' });
+        }
+
+        audio.play().then(() => {
+            playBtn.innerText = "⏸️";
+        }).catch(e => {
+            console.log("Erro ao carregar/reproduzir áudio local:", e);
+            currentTxt.innerText = `Erro / Bloqueio no arquivo ${index}.mp3`;
+        });
+    }
+
+    // Controles de clique
+    playBtn.onclick = () => {
+        if (audio.paused) {
+            if (!audio.src) {
+                loadAndPlay(1);
+            } else {
+                audio.play();
+                playBtn.innerText = "⏸️";
+            }
+        } else {
+            audio.pause();
+            playBtn.innerText = "▶️";
+        }
+    };
+
+    document.getElementById('mp3-next').onclick = () => {
+        let next = currentTrackIndex + 1;
+        if (next > 100) next = 1;
+        loadAndPlay(next);
+    };
+
+    document.getElementById('mp3-prev').onclick = () => {
+        let prev = currentTrackIndex - 1;
+        if (prev < 1) prev = 100;
+        loadAndPlay(prev);
+    };
+
+    // Próxima automática ao acabar
+    audio.onended = () => {
+        let next = currentTrackIndex + 1;
+        if (next > 100) next = 1;
+        loadAndPlay(next);
+    };
+
+    console.log("Script MP3 Player Carregado com Sucesso!");
+})();
