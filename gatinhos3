@@ -1,0 +1,264 @@
+(function() {
+    // --- 1. CONFIGURAÇÕES DE LINKS E ÁUDIO ---
+    const totalCats = 15;
+    const catGroup = new THREE.Group();
+    scene.add(catGroup);
+
+    // Receptor de áudio na câmera para o efeito 3D
+    const listener = new THREE.AudioListener();
+    camera.add(listener);
+
+    // URLs Corrigidas (Formato RAW direto do GitHub para tocar sem erro)
+    const meowUrl = "https://raw.githubusercontent.com/josesamuelazevedo930-sudo/MOTOR-3D/main/Gato%20filhote%20miando%20efeito%20sonoro.mp3";
+    const ambientUrl = "https://actions.google.com/sounds/v1/ambiences/morning_birds.ogg"; // Som de natureza gratuito
+    const stepUrl = "https://actions.google.com/sounds/v1/foley/footsteps_on_gravel.ogg";
+
+    // Criando Som Ambiente (Natureza)
+    const ambientSound = new THREE.Audio(listener);
+    const audioLoader = new THREE.AudioLoader();
+    audioLoader.load(ambientUrl, (buffer) => {
+        ambientSound.setBuffer(buffer);
+        ambientSound.setLoop(true);
+        ambientSound.setVolume(0.4);
+        ambientSound.play();
+    });
+
+    const catColors = [0xffa500, 0x1a1a1a, 0xffffff, 0x808080, 0xd2b48c];
+
+    // --- 2. MODELAGEM DO GATINHO COM JUNTAS DINÂMICAS ---
+    function createCatModel(color) {
+        const cat = new THREE.Group();
+        const mat = new THREE.MeshLambertMaterial({ color: color });
+
+        // Base/Pivot do Gato (Para animação de pulo)
+        const base = new THREE.Group();
+        cat.add(base);
+
+        // Corpo
+        const bodyGeo = new THREE.BoxGeometry(1.6, 1.2, 2.5);
+        const body = new THREE.Mesh(bodyGeo, mat);
+        body.position.y = 0.6;
+        base.add(body);
+
+        // Cabeça
+        const headGeo = new THREE.BoxGeometry(1.2, 1.2, 1.2);
+        const head = new THREE.Mesh(headGeo, mat);
+        head.position.set(0, 1.4, 1.2);
+        base.add(head);
+
+        // Olhos
+        const eyeGeo = new THREE.BoxGeometry(0.15, 0.15, 0.1);
+        const eyeMat = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+        const eyeL = new THREE.Mesh(eyeGeo, eyeMat); eyeL.position.set(0.3, 1.5, 1.8);
+        const eyeR = eyeL.clone(); eyeR.position.x = -0.3;
+        base.add(eyeL, eyeR);
+
+        // Orelhas
+        const earGeo = new THREE.ConeGeometry(0.25, 0.5, 4);
+        const earL = new THREE.Mesh(earGeo, mat); earL.position.set(0.4, 2.1, 1.2);
+        const earR = earL.clone(); earR.position.x = -0.4;
+        base.add(earL, earR);
+
+        // Patas (Separadas para animar passos)
+        const legGeo = new THREE.BoxGeometry(0.35, 0.8, 0.35);
+        const legs = [];
+        const posLegs = [[0.5, 0, 0.8], [-0.5, 0, 0.8], [0.5, 0, -0.8], [-0.5, 0, -0.8]];
+        posLegs.forEach(p => {
+            const leg = new THREE.Mesh(legGeo, mat);
+            leg.position.set(p[0], p[1], p[2]);
+            base.add(leg);
+            legs.push(leg);
+        });
+
+        // --- Rabo com Pivot Articulado ---
+        const tailPivot = new THREE.Group();
+        tailPivot.position.set(0, 1.1, -1.2); // Ponto de rotação na traseira
+        base.add(tailPivot);
+
+        const tailGeo = new THREE.BoxGeometry(0.2, 1.0, 0.2);
+        const tailMesh = new THREE.Mesh(tailGeo, mat);
+        tailMesh.position.y = 0.4; // Desloca a malha para girar pela base
+        tailMesh.rotation.x = Math.PI / 4;
+        tailPivot.add(tailMesh);
+
+        cat.scale.set(1.4, 1.4, 1.4);
+
+        // Retorna referências para animar as partes individuais
+        return { mesh: cat, base: base, tail: tailPivot, legs: legs };
+    }
+
+    // --- 3. INSTANCIANDO OS GATINHOS AND SONS 3D ---
+    const catsData = [];
+
+    for (let i = 0; i < totalCats; i++) {
+        let randomColor = catColors[Math.floor(Math.random() * catColors.length)];
+        let catObj = createCatModel(randomColor);
+        
+        catObj.mesh.position.set((Math.random() - 0.5) * 120, 50, (Math.random() - 0.5) * 120);
+        catGroup.add(catObj.mesh);
+
+        // Áudio 3D do Miado
+        const positionalMeow = new THREE.PositionalAudio(listener);
+        audioLoader.load(meowUrl, (buffer) => {
+            positionalMeow.setBuffer(buffer);
+            positionalMeow.setRefDistance(12);
+            positionalMeow.setVolume(2.5); // Bem audível
+        });
+        catObj.mesh.add(positionalMeow);
+
+        // Áudio 3D dos Passos e Pulos
+        const positionalSFX = new THREE.PositionalAudio(listener);
+        audioLoader.load(stepUrl, (buffer) => {
+            positionalSFX.setBuffer(buffer);
+            positionalSFX.setRefDistance(8);
+            positionalSFX.setVolume(0.5);
+        });
+        catObj.mesh.add(positionalSFX);
+
+        catsData.push({
+            obj: catObj,
+            meowAudio: positionalMeow,
+            sfxAudio: positionalSFX,
+            state: 'idle',
+            timer: Math.random() * 3,
+            targetX: catObj.mesh.position.x,
+            targetZ: catObj.mesh.position.z,
+            speed: 0.15 + Math.random() * 0.1,
+            meowTimer: 3 + Math.random() * 15,
+            
+            // Física e Animação
+            animTime: Math.random() * 100,
+            velY: 0,
+            isGrounded: true,
+            jumpTimer: 2 + Math.random() * 8
+        });
+    }
+
+    // --- 4. ENGINE DE COMPORTAMENTO, FÍSICA E ANIMAÇÃO ---
+    const catRaycaster = new THREE.Raycaster();
+    const upVector = new THREE.Vector3(0, -1, 0);
+
+    function updateCats() {
+        catsData.forEach(cat => {
+            cat.animTime += 0.15;
+            cat.timer -= 0.016;
+            cat.meowTimer -= 0.016;
+            cat.jumpTimer -= 0.016;
+
+            // 1. Mexer o rabinho constantemente
+            cat.obj.tail.rotation.y = Math.sin(cat.animTime * 1.5) * 0.4; 
+            cat.obj.tail.rotation.z = Math.cos(cat.animTime * 0.5) * 0.1;
+
+            // 2. Sistema de Miados Automatizados
+            if (cat.meowTimer <= 0) {
+                if (cat.meowAudio.buffer && !cat.meowAudio.isPlaying) {
+                    cat.meowAudio.play();
+                }
+                cat.meowTimer = 8 + Math.random() * 18;
+            }
+
+            // Distância até o jogador
+            let distToPlayer = 999;
+            if (typeof player !== 'undefined' && player) {
+                distToPlayer = cat.obj.mesh.position.distanceTo(player.position);
+            }
+
+            // 3. Inteligência Artificial de Estados
+            if (distToPlayer < 20) {
+                cat.state = 'following';
+                cat.targetX = player.position.x + (Math.random() - 0.5) * 4;
+                cat.targetZ = player.position.z + (Math.random() - 0.5) * 4;
+                if(cat.jumpTimer > 1.5) cat.jumpTimer = 1.5; // Pula de alegria perto de você
+            } else if (cat.timer <= 0) {
+                cat.state = Math.random() > 0.5 ? 'walking' : 'idle';
+                cat.timer = 3 + Math.random() * 5;
+                if (cat.state === 'walking') {
+                    cat.targetX = cat.obj.mesh.position.x + (Math.random() - 0.5) * 35;
+                    cat.targetZ = cat.obj.mesh.position.z + (Math.random() - 0.5) * 35;
+                }
+            }
+
+            // 4. Movimentação de Passos e Som
+            if (cat.state === 'walking' || cat.state === 'following') {
+                let dx = cat.targetX - cat.obj.mesh.position.x;
+                let dz = cat.targetZ - cat.obj.mesh.position.z;
+                let dist = Math.sqrt(dx * dx + dz * dz);
+
+                if (dist > 2.0) {
+                    let angle = Math.atan2(dx, dz);
+                    cat.obj.mesh.rotation.y = angle;
+                    
+                    let currentSpeed = cat.state === 'following' ? cat.speed * 1.4 : cat.speed;
+                    cat.obj.mesh.position.x += Math.sin(angle) * currentSpeed;
+                    cat.obj.mesh.position.z += Math.cos(angle) * currentSpeed;
+
+                    // Animar as patinhas
+                    cat.obj.legs.forEach((leg, idx) => {
+                        leg.rotation.x = Math.sin(cat.animTime * 2 + idx) * 0.4;
+                    });
+
+                    // Som de passos leves
+                    if(cat.isGrounded && Math.floor(cat.animTime) % 5 === 0) {
+                        if(cat.sfxAudio.buffer && !cat.sfxAudio.isPlaying) {
+                            cat.sfxAudio.setVolume(0.15);
+                            cat.sfxAudio.play();
+                        }
+                    }
+                }
+            } else {
+                cat.obj.legs.forEach(leg => leg.rotation.x = 0);
+            }
+
+            // 5. Sistema de Pulo Físico
+            if (cat.jumpTimer <= 0 && cat.isGrounded) {
+                cat.velY = 0.5 + Math.random() * 0.3; 
+                cat.isGrounded = false;
+                cat.jumpTimer = 5 + Math.random() * 12;
+
+                // Tocar efeito de pulo saindo do gatinho
+                if(cat.sfxAudio.buffer && !cat.sfxAudio.isPlaying) {
+                    cat.sfxAudio.setVolume(0.4);
+                    cat.sfxAudio.play();
+                }
+            }
+
+            // 6. Gravidade e Colisão com o Mapa
+            if (!cat.isGrounded) {
+                cat.obj.base.position.y += cat.velY;
+                cat.velY -= 0.035; 
+            }
+
+            if (typeof mapModel !== 'undefined' && mapModel) {
+                catRaycaster.set(new THREE.Vector3(cat.obj.mesh.position.x, cat.obj.mesh.position.y + cat.obj.base.position.y + 10, cat.obj.mesh.position.z), upVector);
+                let hits = catRaycaster.intersectObject(mapModel, true);
+                
+                if (hits.length > 0) {
+                    let groundY = hits[0].point.y;
+                    let currentY = cat.obj.mesh.position.y + cat.obj.base.position.y;
+
+                    if (currentY <= groundY + 0.1 || hits[0].distance < 10.1) {
+                        cat.obj.mesh.position.y = groundY;
+                        cat.obj.base.position.y = 0;
+                        cat.velY = 0;
+                        cat.isGrounded = true;
+                    }
+                } else {
+                    if(cat.obj.mesh.position.y < -100) {
+                        cat.obj.mesh.position.set((Math.random() - 0.5) * 60, 50, (Math.random() - 0.5) * 60);
+                        cat.obj.base.position.y = 0;
+                        cat.velY = 0;
+                    }
+                }
+            }
+        });
+    }
+
+    // Acoplamento no loop de animação do jogo
+    const oldAnimate = window.animate;
+    window.animate = function() {
+        updateCats();
+        oldAnimate();
+    };
+
+    console.log("Sistema de Gatos com Áudio 3D injetado!");
+})();
