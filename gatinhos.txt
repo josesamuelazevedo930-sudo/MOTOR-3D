@@ -1,0 +1,198 @@
+(function() {
+    // 1. Configurações Iniciais e Áudio 3D
+    const totalCats = 15;
+    const catGroup = new THREE.Group();
+    scene.add(catGroup);
+
+    // Configuração do receptor de áudio na câmera do jogo para o efeito 3D
+    const listener = new THREE.AudioListener();
+    camera.add(listener);
+
+    const soundUrl = "https://github.com/josesamuelazevedo930-sudo/MOTOR-3D/raw/main/Gato%20filhote%20miando%20efeito%20sonoro.mp3"; 
+    // Nota: Certifique-se de que a extensão (.mp3 ou .wav) está correta no link real se necessário
+
+    // 2. Cores bonitas e variadas para os gatinhos
+    const catColors = [
+        0xffa500, // Laranja (Gato Amarelo/Rajado)
+        0x1a1a1a, // Preto
+        0xffffff, // Branco
+        0x808080, // Cinza
+        0xd2b48c, // Siamês (Tom Creme/Bege)
+        0xe67e22  // Calico/Caramelo escuro
+    ];
+
+    // 3. Criando um modelo simples e procedural de gatinho (Corpo, Cabeça, Orelhas, Rabo)
+    function createCatModel(color) {
+        const cat = new THREE.Group();
+        const mat = new THREE.MeshLambertMaterial({ color: color });
+
+        // Corpo
+        const bodyGeo = new THREE.BoxGeometry(1.6, 1.2, 2.5);
+        const body = new THREE.Mesh(bodyGeo, mat);
+        body.position.y = 0.6;
+        cat.add(body);
+
+        // Cabeça
+        const headGeo = new THREE.BoxGeometry(1.2, 1.2, 1.2);
+        const head = new THREE.Mesh(headGeo, mat);
+        head.position.set(0, 1.4, 1.4);
+        cat.add(head);
+
+        // Orelhas
+        const earGeo = new THREE.ConeGeometry(0.3, 0.5, 4);
+        const earL = new THREE.Mesh(earGeo, mat);
+        earL.position.set(0.4, 2.1, 1.4);
+        earL.rotation.y = Math.PI / 4;
+        const earR = earL.clone();
+        earR.position.x = -0.4;
+        cat.add(earL, earR);
+
+        // Patas
+        const legGeo = new THREE.BoxGeometry(0.35, 0.8, 0.35);
+        const posLegs = [
+            [0.6, 0, 0.8], [-0.6, 0, 0.8],
+            [0.6, 0, -0.8], [-0.6, 0, -0.8]
+        ];
+        posLegs.forEach(p => {
+            const leg = new THREE.Mesh(legGeo, mat);
+            leg.position.set(p[0], p[1], p[p[2]]);
+            cat.add(leg);
+        });
+
+        // Rabo
+        const tailGeo = new THREE.BoxGeometry(0.2, 0.8, 0.2);
+        const tail = new THREE.Mesh(tailGeo, mat);
+        tail.position.set(0, 1.2, -1.3);
+        tail.rotation.x = Math.PI / 4;
+        cat.add(tail);
+
+        // Olhos básicos (Pretos/Verdes)
+        const eyeGeo = new THREE.BoxGeometry(0.15, 0.15, 0.1);
+        const eyeMat = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+        const eyeL = new THREE.Mesh(eyeGeo, eyeMat);
+        eyeL.position.set(0.3, 1.5, 2.0);
+        const eyeR = eyeL.clone();
+        eyeR.position.x = -0.3;
+        cat.add(eyeL, eyeR);
+
+        // Escala final para ficarem fofos no mapa
+        cat.scale.set(1.5, 1.5, 1.5);
+        return cat;
+    }
+
+    // 4. Instanciando os 15 gatinhos com IA de comportamento
+    const catsData = [];
+
+    for (let i = 0; i < totalCats; i++) {
+        let randomColor = catColors[Math.floor(Math.random() * catColors.length)];
+        let catMesh = createCatModel(randomColor);
+        
+        // Espalha os gatos randomicamente perto do centro do mapa
+        catMesh.position.set((Math.random() - 0.5) * 150, 40, (Math.random() - 0.5) * 150);
+        catGroup.add(catMesh);
+
+        // Adiciona o componente PositionalAudio para o Som 3D sair diretamente do gato
+        const positionalAudio = new THREE.PositionalAudio(listener);
+        const audioLoader = new THREE.AudioLoader();
+        audioLoader.load(soundUrl, function(buffer) {
+            positionalAudio.setBuffer(buffer);
+            positionalAudio.setRefDistance(15); // Distância onde o som começa a sumir
+            positionalAudio.setVolume(1.0);
+        });
+        catMesh.add(positionalAudio);
+
+        // Dados de comportamento individual
+        catsData.push({
+            mesh: catMesh,
+            audio: positionalAudio,
+            state: 'idle', // idle, walking, following
+            timer: Math.random() * 3,
+            targetX: catMesh.position.x,
+            targetZ: catMesh.position.z,
+            speed: 0.15 + Math.random() * 0.1,
+            meowTimer: 5 + Math.random() * 20 // Tempo aleatório para miar
+        });
+    }
+
+    // 5. Loop de Atualização (Injetado de forma segura no requestAnimationFrame do jogo)
+    const catRaycaster = new THREE.Raycaster();
+    const upVector = new THREE.Vector3(0, -1, 0);
+
+    function updateCats() {
+        const delta = clock.getDelta(); // Usa o clock existente do motor
+        
+        catsData.forEach(cat => {
+            // Diminui os contadores de tempo
+            cat.timer -= 0.016; 
+            cat.meowTimer -= 0.016;
+
+            // Lógica para Miar aleatoriamente (Som 3D)
+            if (cat.meowTimer <= 0) {
+                if (cat.audio.buffer && !cat.audio.isPlaying) {
+                    cat.audio.play();
+                }
+                cat.meowTimer = 10 + Math.random() * 25; // Próximo miado
+            }
+
+            // Distância até o jogador (Interação)
+            let distToPlayer = 999;
+            if (typeof player !== 'undefined' && player) {
+                distToPlayer = cat.mesh.position.distanceTo(player.position);
+            }
+
+            // Máquina de Estados (Comportamento de vida própria)
+            if (distToPlayer < 22) {
+                // Interagir com o jogador: Se aproxima e olha para você
+                cat.state = 'following';
+                cat.targetX = player.position.x + (Math.random() - 0.5) * 5;
+                cat.targetZ = player.position.z + (Math.random() - 0.5) * 5;
+            } else if (cat.timer <= 0) {
+                // Alternar entre andar sozinho e ficar parado
+                cat.state = Math.random() > 0.4 ? 'walking' : 'idle';
+                cat.timer = 2 + Math.random() * 6;
+                
+                if (cat.state === 'walking') {
+                    cat.targetX = cat.mesh.position.x + (Math.random() - 0.5) * 40;
+                    cat.targetZ = cat.mesh.position.z + (Math.random() - 0.5) * 40;
+                }
+            }
+
+            // Movimentação e Rotação suave
+            if (cat.state === 'walking' || cat.state === 'following') {
+                let dx = cat.targetX - cat.mesh.position.x;
+                let dz = cat.targetZ - cat.mesh.position.z;
+                let dist = Math.sqrt(dx * dx + dz * dz);
+
+                if (dist > 1.5) {
+                    let angle = Math.atan2(dx, dz);
+                    cat.mesh.rotation.y = angle;
+                    
+                    // Ajusta a velocidade se estiver seguindo você (corre mais um pouquinho)
+                    let currentSpeed = cat.state === 'following' ? cat.speed * 1.3 : cat.speed;
+                    cat.mesh.position.x += Math.sin(angle) * currentSpeed;
+                    cat.mesh.position.z += Math.cos(angle) * currentSpeed;
+                }
+            }
+
+            // Física de Gravidade e Colisão com o mapa (Raycasting individual)
+            if (typeof mapModel !== 'undefined' && mapModel) {
+                catRaycaster.set(new THREE.Vector3(cat.mesh.position.x, cat.mesh.position.y + 10, cat.mesh.position.z), upVector);
+                let hits = catRaycaster.intersectObject(mapModel, true);
+                if (hits.length > 0 && hits[0].distance < 12) {
+                    cat.mesh.position.y = hits[0].point.y; // Fixa no chão do mapa
+                } else {
+                    cat.mesh.position.y -= 0.5; // Cai se estiver no ar
+                }
+            }
+        });
+    }
+
+    // Gancho (Hook) no loop principal de renderização sem quebrar o jogo original
+    const oldAnimate = window.animate;
+    window.animate = function() {
+        updateCats();
+        oldAnimate();
+    };
+
+    console.log("Sistema de Gatinhos com IA e Som 3D ativado com sucesso!");
+})();
