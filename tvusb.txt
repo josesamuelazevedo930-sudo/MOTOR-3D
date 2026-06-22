@@ -1,0 +1,106 @@
+// === SCRIPT DA TV CORRIGIDO (SOM + VÍDEO) ===
+(function() {
+    if (!scene || !mapModel) {
+        alert("Aguarde o jogo carregar completamente antes de rodar o script!");
+        return;
+    }
+
+    // 1. Criar o elemento de vídeo HTML com tamanho definido para forçar renderização de pixels
+    const video = document.createElement('video');
+    video.crossOrigin = "anonymous";
+    video.loop = false;
+    video.muted = false;
+    video.width = 640;
+    video.height = 360;
+    video.style.display = 'none';
+    document.body.appendChild(video);
+
+    // Configuração da Playlist (1 a 100)
+    let currentTrack = 1;
+    const baseUSBPath = "file:///usb/sda1/3djogo/video/";
+
+    function playVideo(index) {
+        if (index > 100) index = 1;
+        if (index < 1) index = 100;
+        currentTrack = index;
+        
+        video.src = `${baseUSBPath}${currentTrack}.mp4`;
+        video.load();
+        
+        video.play().catch(e => {
+            console.log("Interação necessária para rodar o vídeo.");
+        });
+    }
+
+    video.onended = () => {
+        playVideo(currentTrack + 1);
+        if(document.getElementById('tv-track')) {
+            document.getElementById('tv-track').innerText = `${currentTrack}.mp4`;
+        }
+    };
+
+    // 2. Criar a Textura de Vídeo Correta
+    const videoTexture = new THREE.VideoTexture(video);
+    // Configurações cruciais para atualizar a textura em tempo real
+    videoTexture.minFilter = THREE.LinearFilter;
+    videoTexture.magFilter = THREE.LinearFilter;
+    videoTexture.format = THREE.RGBFormat; 
+
+    // Materiais da TV 
+    const tvMaterials = [
+        new THREE.MeshBasicMaterial({ color: 0x111111 }), // direita
+        new THREE.MeshBasicMaterial({ color: 0x111111 }), // esquerda
+        new THREE.MeshBasicMaterial({ color: 0x111111 }), // cima
+        new THREE.MeshBasicMaterial({ color: 0x111111 }), // baixo
+        new THREE.MeshBasicMaterial({ map: videoTexture }),// frente (tela)
+        new THREE.MeshBasicMaterial({ color: 0x111111 })  // trás
+    ];
+
+    // Caixa da TV
+    const tvGeometry = new THREE.BoxGeometry(20, 12, 2);
+    const tvMesh = new THREE.Mesh(tvGeometry, tvMaterials);
+
+    // Posiciona a TV no mapa
+    tvMesh.position.set(0, 15, -40); 
+    scene.add(tvMesh);
+
+    // 3. LOOP DE ANIMAÇÃO PARA FORÇAR A ATUALIZAÇÃO DA TEXTURA DE VÍDEO
+    function updateTVTexture() {
+        requestAnimationFrame(updateTVTexture);
+        if (video.readyState >= video.HAVE_CURRENT_DATA) {
+            videoTexture.needsUpdate = true;
+        }
+    }
+    updateTVTexture();
+
+    // 4. Controles Flutuantes na Tela
+    const controlDiv = document.createElement('div');
+    controlDiv.style.position = 'absolute';
+    controlDiv.style.left = '20px';
+    controlDiv.style.top = '20px';
+    controlDiv.style.zIndex = '9999';
+    controlDiv.style.background = 'rgba(0,0,0,0.8)';
+    controlDiv.style.padding = '10px';
+    controlDiv.style.borderRadius = '8px';
+    controlDiv.style.color = '#fff';
+    controlDiv.style.fontFamily = 'sans-serif';
+    controlDiv.innerHTML = `
+        <div style="font-size:12px; margin-bottom:5px; text-align:center;">📺 CONTROLE DA TV</div>
+        <button id="tv-prev" style="padding:5px 10px; background:#ff3333; color:#fff; border:none; font-weight:bold; margin-right:5px; border-radius:4px;"><<</button>
+        <span id="tv-track" style="font-weight:bold; font-size:14px;">1.mp4</span>
+        <button id="tv-next" style="padding:5px 10px; background:#28a745; color:#fff; border:none; font-weight:bold; margin-left:5px; border-radius:4px;">>></button>
+    `;
+    document.body.appendChild(controlDiv);
+
+    document.getElementById('tv-prev').onclick = () => {
+        playVideo(currentTrack - 1);
+        document.getElementById('tv-track').innerText = `${currentTrack}.mp4`;
+    };
+    document.getElementById('tv-next').onclick = () => {
+        playVideo(currentTrack + 1);
+        document.getElementById('tv-track').innerText = `${currentTrack}.mp4`;
+    };
+
+    // Iniciar
+    playVideo(1);
+})();
