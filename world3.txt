@@ -1,0 +1,115 @@
+// ==========================================
+// 1. CRIAR CONTAINER DE NOTIFICAÇÕES (INVISÍVEL)
+// ==========================================
+var antigoContainer = document.getElementById('notif-container');
+if (antigoContainer) antigoContainer.remove(); 
+
+var container = document.createElement('div');
+container.id = 'notif-container';
+container.style.position = 'absolute';
+container.style.left = '20px';
+container.style.bottom = '120px'; 
+container.style.display = 'flex';
+container.style.flexDirection = 'column';
+container.style.gap = '6px';
+container.style.zIndex = '9999';
+container.style.pointerEvents = 'none'; 
+document.body.appendChild(container);
+
+function mostrarNotificacao(txt, cor) {
+    var nota = document.createElement('div');
+    nota.style.background = 'rgba(0, 0, 0, 0.75)';
+    nota.style.color = cor || '#fff';
+    nota.style.fontFamily = 'monospace';
+    nota.style.fontSize = '12px';
+    nota.style.padding = '8px 12px';
+    nota.style.borderRadius = '5px';
+    nota.style.borderLeft = '4px solid ' + (cor || '#fff');
+    nota.style.transition = 'opacity 0.5s ease, transform 0.5s ease';
+    nota.style.transform = 'translateX(-20px)';
+    nota.style.opacity = '0';
+    nota.innerText = txt;
+    container.appendChild(nota);
+    setTimeout(function() { nota.style.opacity = '1'; nota.style.transform = 'translateX(0)'; }, 10);
+    setTimeout(function() {
+        nota.style.opacity = '0';
+        nota.style.transform = 'translateY(-10px)';
+        setTimeout(function() { nota.remove(); }, 500);
+    }, 4000);
+}
+
+// ==========================================
+// 2. CONFIGURAÇÕES DO GERADOR INTELIGENTE
+// ==========================================
+var totalModelos = 100;
+var tamanhoGrade = 6;   
+var margemSeguranca = 25; // Distância mínima extra entre as estruturas (em metros)
+
+mostrarNotificacao("⚙️ INICIALIZANDO GERADOR INTELIGENTE...", "#ffff00");
+
+if (typeof loaderGLTF === 'undefined' || typeof scene === 'undefined') {
+    mostrarNotificacao("❌ ERRO: Motor do jogo não encontrado!", "#ff3333");
+} else {
+    mostrarNotificacao("📂 Lendo USB de forma inteligente...", "#00ffff");
+
+    // Matriz para rastrear o tamanho ocupado em cada linha/coluna e evitar sobreposição
+    var largurasAcumuladasX = new Array(tamanhoGrade).fill(0);
+    var comprimentosAcumuladosZ = new Array(tamanhoGrade).fill(0);
+
+    for (var x = 0; x < tamanhoGrade; x++) {
+        for (var z = 0; z < tamanhoGrade; z++) {
+            
+            if (Math.random() < 0.15) continue; // 15% de chance de deixar um espaço vazio (rua/praça)
+
+            var id = Math.floor(Math.random() * totalModelos) + 1;
+            var url = "file:///usb/sda1/3djogo/3d/" + id + ".glb";
+
+            (function(gridX, gridZ, oId, oUrl) {
+                
+                loaderGLTF.load(oUrl, function(gltf) {
+                    var objeto = gltf.scene;
+                    
+                    // 1. Aplicar a escala grande necessária
+                    var novaEscala = 25; 
+                    objeto.scale.set(novaEscala, novaEscala, novaEscala);
+                    
+                    // 2. Rotacionar aleatoriamente em ângulos retos
+                    var deusesDaRotacao = [0, Math.PI / 2, Math.PI, (3 * Math.PI) / 2];
+                    objeto.rotation.y = deusesDaRotacao[Math.floor(Math.random() * deusesDaRotacao.length)];
+                    
+                    // 3. MEDIÇÃO INTELIGENTE: Calcula o tamanho real do objeto com a escala aplicada
+                    var box = new THREE.Box3().setFromObject(objeto);
+                    var tamanhoReal = new THREE.Vector3();
+                    box.getSize(tamanhoReal);
+
+                    // 4. POSICIONAMENTO DINÂMICO: Usa o tamanho real + margem para calcular a posição
+                    // Se for o primeiro objeto da fileira, começa perto do centro, senão empurra baseado no tamanho dos anteriores
+                    var posX = largurasAcumuladasX[gridX] + (tamanhoReal.x / 2);
+                    var posZ = comprimentosAcumuladosZ[gridZ] + (tamanhoReal.z / 2);
+
+                    // Centralizar a grade ao redor do mapa aplicando um recuo inicial
+                    var centralizarOffset = 300;
+                    objeto.position.set(posX - centralizarOffset, 0, posZ - centralizarOffset);
+                    
+                    // 5. Atualiza o rastreador acumulado para o próximo objeto da fileira saber onde começar
+                    largurasAcumuladasX[gridX] += tamanhoReal.x + margemSeguranca;
+                    comprimentosAcumuladosZ[gridZ] += tamanhoReal.z + margemSeguranca;
+
+                    // 6. Integração com o Motor de física/colisão
+                    if (typeof mapModel !== 'undefined' && mapModel) {
+                        mapModel.add(objeto);
+                    } else {
+                        scene.add(objeto);
+                    }
+                    
+                    mostrarNotificacao("✔️ " + oId + ".glb posicionado com sucesso!", "#00ff00");
+                    
+                }, undefined, function(err) {
+                    mostrarNotificacao("⚠️ Falha no modelo " + oId + ".glb", "#ff3333");
+                });
+
+            })(x, z, id, url);
+
+        }
+    }
+}
