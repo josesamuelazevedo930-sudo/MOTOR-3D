@@ -1,0 +1,101 @@
+// ==========================================
+// 1. CRIAR E CONFIGURAR O TERMINAL VISUAL
+// ==========================================
+var antigoTerm = document.getElementById('debug-terminal');
+if (antigoTerm) antigoTerm.remove(); // Limpa se você rodar o script de novo
+
+var term = document.createElement('div');
+term.id = 'debug-terminal';
+term.style.position = 'absolute';
+term.style.left = '20px';
+term.style.bottom = '180px';
+term.style.width = '360px';
+term.style.height = '220px';
+term.style.background = 'rgba(0, 0, 0, 0.9)';
+term.style.color = '#00ff00';
+term.style.fontFamily = 'monospace';
+term.style.fontSize = '11px';
+term.style.padding = '10px';
+term.style.overflowY = 'scroll';
+term.style.borderRadius = '8px';
+term.style.border = '2px solid #555';
+term.style.zIndex = '9999';
+document.body.appendChild(term);
+
+function logTerminal(txt, cor) {
+    var p = document.createElement('p');
+    p.style.margin = '2px 0';
+    if(cor) p.style.color = cor;
+    p.innerText = "[DEBUG] " + txt;
+    term.appendChild(p);
+    term.scrollTop = term.scrollHeight; // Mantém o scroll no final
+}
+
+// ==========================================
+// 2. CONFIGURAÇÕES DA CIDADE PROCEDURAL
+// ==========================================
+var totalModelos = 100; // Quantidade de arquivos (1.glb até 100.glb)
+var tamanhoGrade = 6;   // Cidade de 6x6 blocos
+var espacamento = 55;   // Distância entre prédios para evitar sobreposição
+var deslocamento = (tamanhoGrade * espacamento) / 2;
+
+logTerminal("INICIALIZANDO GERADOR DE CIDADE...", "#ffff00");
+
+// Verifica se o motor do seu jogo está acessível
+if (typeof loaderGLTF === 'undefined' || typeof scene === 'undefined') {
+    logTerminal("ERRO: 'loaderGLTF' ou 'scene' não encontrados! O jogo precisa estar rodando.", "#ff3333");
+} else {
+    logTerminal("Motor Three.js detectado com sucesso.", "#00ff00");
+    logTerminal("Lendo do USB: file:///usb/sda1/3djogo/3d/", "#00ffff");
+
+    for (var x = 0; x < tamanhoGrade; x++) {
+        for (var z = 0; z < tamanhoGrade; z++) {
+            
+            // 20% de chance de deixar o lote vazio (gera ruas e praças vazias)
+            if (Math.random() < 0.20) continue;
+
+            // Escolhe o ID do modelo (Ex: 1, 45, 92...)
+            var id = Math.floor(Math.random() * totalModelos) + 1;
+            
+            // CAMINHO EXATO DO SEU USB
+            var url = "file:///usb/sda1/3djogo/3d/" + id + ".glb";
+            
+            // Calcula a posição no mapa baseada na grade
+            var px = (x * espacamento) - deslocamento;
+            var pz = (z * espacamento) - deslocamento;
+
+            logTerminal("Carregando lote: " + id + ".glb na pos [" + Math.floor(px) + ", " + Math.floor(pz) + "]", "#aaaaaa");
+
+            // Escopo isolado (IIFE) para segurar as posições no loop assíncrono
+            (function(posX, posZ, oId, oUrl) {
+                
+                loaderGLTF.load(oUrl, function(gltf) {
+                    var predio = gltf.scene;
+                    
+                    // Coloca o prédio na posição calculada (0 = altura do chão)
+                    predio.position.set(posX, 0, posZ);
+                    
+                    // Rotações inteligentes travadas em quarteirão (0°, 90°, 180°, 270°)
+                    var deusesDaRotacao = [0, Math.PI / 2, Math.PI, (3 * Math.PI) / 2];
+                    predio.rotation.y = deusesDaRotacao[Math.floor(Math.random() * deusesDaRotacao.length)];
+                    
+                    // Tamanho do prédio. Se ele sumir, aumente esse valor (Ex: 10, 10, 10)
+                    predio.scale.set(6, 6, 6);
+                    
+                    // Insere na cena principal do jogo
+                    scene.add(predio);
+                    
+                    logTerminal("SUCESSO: Modelo " + oId + ".glb adicionado!", "#00ff00");
+                    
+                }, undefined, function(err) {
+                    // Se o navegador ou sistema bloquear a leitura, o motivo aparece aqui em vermelho
+                    var msgErro = (err && err.message) ? err.message : "Bloqueio CORS / Arquivo não encontrado no USB";
+                    logTerminal("FALHA ao carregar " + oId + ".glb: " + msgErro, "#ff3333");
+                });
+
+            })(px, pz, id, url);
+
+        }
+    }
+    logTerminal("Varredura concluída. Aguardando o USB responder...", "#ffff00");
+}
