@@ -1,0 +1,67 @@
+// Configurações do gerador procedural
+const TOTAL_MODELOS = 100;
+const TAMANHO_GRADE = 6;  // Matriz de 6x6 prédios
+const ESPACAMENTO = 50;   // Distância entre os prédios
+
+function gerarCidadeUSB_Forcado() {
+    console.log("Iniciando carregamento forçado via USB...");
+    
+    if (typeof loaderGLTF === 'undefined' || typeof scene === 'undefined') {
+        alert("Erro: O motor do jogo não foi totalmente inicializado.");
+        return;
+    }
+
+    const offset = (TAMANHO_GRADE * ESPACAMENTO) / 2;
+
+    for (let x = 0; x < TAMANHO_GRADE; x++) {
+        for (let z = 0; z < TAMANHO_GRADE; z++) {
+            
+            // 20% de chance de deixar o lote vazio (gera caminhos/ruas)
+            if (Math.random() < 0.20) continue;
+
+            const idModelo = Math.floor(Math.random() * TOTAL_MODELOS) + 1;
+            const urlModelo = `file:///usb/sda1/3djogo/3d/${idModelo}.glb`;
+            
+            // Posição baseada na grade
+            const posX = (x * ESPACAMENTO) - offset;
+            const posZ = (z * ESPACAMENTO) - offset;
+            
+            // Escopo isolado para cada carregamento não sobrescrever variáveis
+            ((currentX, currentZ, id) => {
+                loaderGLTF.load(urlModelo, (gltf) => {
+                    const objeto = gltf.scene;
+                    
+                    // Força a atualização da matriz do objeto
+                    objeto.updateMatrixWorld(true);
+                    
+                    // Calcula o tamanho real do objeto para ajustar o "chão" dele
+                    const box = new THREE.Box3().setFromObject(objeto);
+                    const size = box.getSize(new THREE.Vector3());
+                    
+                    // Posiciona (X, Y ajustado para não afundar, Z)
+                    objeto.position.set(currentX, 0, currentZ);
+                    
+                    // Rotação em eixos de 90 graus
+                    const rotacoes = [0, Math.PI / 2, Math.PI, (3 * Math.PI) / 2];
+                    objeto.rotation.y = rotacoes[Math.floor(Math.random() * rotacoes.length)];
+                    
+                    // Multiplica a escala padrão (Ajuste aqui se ficarem muito pequenos)
+                    objeto.scale.set(6, 6, 6); 
+                    
+                    // Adiciona na cena do jogo
+                    scene.add(objeto);
+                    console.log(`Modelo ${id}.glb adicionado com sucesso.`);
+                }, 
+                undefined, 
+                (error) => {
+                    // Exibe o erro exato no console/tela se o arquivo não existir ou for bloqueado
+                    console.error(`Falha crítica no modelo ${id}:`, error);
+                });
+            })(posX, posZ, idModelo);
+        }
+    }
+    alert("Processo de geração concluído! Verifique o mapa.");
+}
+
+// Executa a geração
+gerarCidadeUSB_Forcado();
