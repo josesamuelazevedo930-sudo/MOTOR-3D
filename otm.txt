@@ -1,0 +1,124 @@
+(function() {
+    // 1. Criar e Estilizar o Painel de Otimização (HTML/CSS)
+    const optPanel = document.createElement('div');
+    optPanel.id = 'perf-panel';
+    optPanel.style.cssText = `
+        position: absolute;
+        left: 20px;
+        top: 20px;
+        width: 240px;
+        background: rgba(0, 0, 0, 0.9);
+        border: 2px solid #00ffcc;
+        border-radius: 10px;
+        padding: 15px;
+        color: #fff;
+        font-family: sans-serif;
+        font-size: 12px;
+        z-index: 1000;
+        box-shadow: 0 0 15px rgba(0, 255, 204, 0.3);
+    `;
+
+    optPanel.innerHTML = `
+        <h3 style="margin: 0 0 10px 0; color: #00ffcc; text-align: center;">🚀 OTIMIZADOR DE FPS</h3>
+        
+        <label style="display:block; margin-bottom: 5px;">Resolução: <span id="res-val">100%</span></label>
+        <input type="range" id="res-slider" min="20" max="100" value="100" style="width:100%; margin-bottom:15px;">
+        
+        <label style="display:block; margin-bottom: 5px;">Opacidade do Mapa: <span id="op-val">100%</span></label>
+        <input type="range" id="op-slider" min="10" max="100" value="100" style="width:100%; margin-bottom:15px;">
+        
+        <button id="btn-no-texture" style="width:100%; padding:8px; margin-bottom:8px; background:#ff3333; color:white; border:none; border-radius:4px; font-weight:bold; cursor:pointer;">🚫 REMOVER TEXTURAS</button>
+        <button id="btn-low-mesh" style="width:100%; padding:8px; background:#ff8800; color:white; border:none; border-radius:4px; font-weight:bold; cursor:pointer;">📉 CASCA SIMPLES (LOW RES)</button>
+        
+        <hr style="border:0; border-top:1px solid #333; margin:10px 0;">
+        <button id="btn-close-perf" style="width:100%; padding:5px; background:#555; color:white; border:none; border-radius:4px; cursor:pointer;">Fechar Menu</button>
+    `;
+
+    document.body.appendChild(optPanel);
+
+    // Guardar referências das texturas originais caso queira reverter
+    const originalMaps = new Map();
+
+    // 2. Lógica dos Controles
+
+    // Controle de Resolução (Pixel Ratio do Renderizador)
+    const resSlider = document.getElementById('res-slider');
+    const resVal = document.getElementById('res-val');
+    resSlider.addEventListener('input', (e) => {
+        const pct = e.target.value;
+        resVal.innerText = pct + "%";
+        if (renderer) {
+            // Modifica a escala de pixel baseada na janela interna
+            renderer.setPixelRatio(window.devicePixelRatio * (pct / 100));
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+    });
+
+    // Controle de Opacidade do Mapa
+    const opSlider = document.getElementById('op-slider');
+    const opVal = document.getElementById('op-val');
+    opSlider.addEventListener('input', (e) => {
+        const pct = e.target.value;
+        opVal.innerText = pct + "%";
+        if (mapModel) {
+            mapModel.traverse((child) => {
+                if (child.isMesh && child.material) {
+                    child.material.transparent = true;
+                    child.material.opacity = pct / 100;
+                    child.material.needsUpdate = true;
+                }
+            });
+        }
+    });
+
+    // Remover Texturas (Deixa apenas cores sólidas nos materiais)
+    document.getElementById('btn-no-texture').addEventListener('click', () => {
+        if (mapModel) {
+            mapModel.traverse((child) => {
+                if (child.isMesh && child.material) {
+                    if (child.material.map) {
+                        // Salva para o caso de precisar recuperar
+                        if (!originalMaps.has(child.id)) {
+                            originalMaps.set(child.id, child.material.map);
+                        }
+                        child.material.map = null; // Remove a textura
+                        child.material.needsUpdate = true;
+                    }
+                }
+            });
+            alert("Texturas removidas para ganho de performance!");
+        } else {
+            alert("Nenhum mapa carregado para remover texturas.");
+        }
+    });
+
+    // Reduzir Detalhes dos Materiais (Desativa sombras internas e cálculos complexos)
+    document.getElementById('btn-low-mesh').addEventListener('click', () => {
+        if (mapModel) {
+            mapModel.traverse((child) => {
+                if (child.isMesh && child.material) {
+                    // Desativa cálculos pesados de luz por vértice
+                    child.material.wireframe = false;
+                    child.material.flatShading = true; 
+                    child.material.roughness = 1.0;
+                    child.material.metalness = 0.0;
+                    child.material.needsUpdate = true;
+                }
+            });
+            alert("Materiais simplificados com sucesso!");
+        }
+    });
+
+    // Botão Fechar
+    document.getElementById('btn-close-perf').addEventListener('click', () => {
+        optPanel.style.display = optPanel.style.display === 'none' ? 'block' : 'none';
+    });
+
+    // Atalho no teclado: Tecla 'P' abre/fecha o menu de performance
+    window.addEventListener('keydown', (e) => {
+        if (e.code === 'KeyP') {
+            optPanel.style.display = optPanel.style.display === 'none' ? 'block' : 'none';
+        }
+    });
+
+})();
