@@ -1,0 +1,104 @@
+// ==========================================
+// 1. CRIAR CONTAINER DE NOTIFICAÇÕES (INVISÍVEL)
+// ==========================================
+var antigoContainer = document.getElementById('notif-container');
+if (antigoContainer) antigoContainer.remove(); // Limpa o anterior
+
+var container = document.createElement('div');
+container.id = 'notif-container';
+container.style.position = 'absolute';
+container.style.left = '20px';
+container.style.bottom = '120px'; // Altura acima dos botões de zoom
+container.style.display = 'flex';
+container.style.flexDirection = 'column';
+container.style.gap = '6px';
+container.style.zIndex = '9999';
+container.style.pointerEvents = 'none'; // Não atrapalha o clique no jogo
+document.body.appendChild(container);
+
+function mostrarNotificacao(txt, cor) {
+    var nota = document.createElement('div');
+    nota.style.background = 'rgba(0, 0, 0, 0.75)';
+    nota.style.color = cor || '#fff';
+    nota.style.fontFamily = 'monospace';
+    nota.style.fontSize = '12px';
+    nota.style.fontWeight = 'bold';
+    nota.style.padding = '8px 12px';
+    nota.style.borderRadius = '5px';
+    nota.style.borderLeft = '4px solid ' + (cor || '#fff');
+    nota.style.boxShadow = '0 2px 5px rgba(0,0,0,0.3)';
+    nota.style.transition = 'opacity 0.5s ease, transform 0.5s ease';
+    nota.style.transform = 'translateX(-20px)';
+    nota.style.opacity = '0';
+    nota.innerText = txt;
+
+    container.appendChild(nota);
+
+    // Efeito de surgimento (Slide in)
+    setTimeout(function() {
+        nota.style.opacity = '1';
+        nota.style.transform = 'translateX(0)';
+    }, 10);
+
+    // Efeito de sumiço (Fade out) após 4 segundos
+    setTimeout(function() {
+        nota.style.opacity = '0';
+        nota.style.transform = 'translateY(-10px)';
+        setTimeout(function() {
+            nota.remove();
+        }, 500); // Remove do HTML após a transição acabar
+    }, 4000);
+}
+
+// ==========================================
+// 2. CONFIGURAÇÕES DA CIDADE PROCEDURAL
+// ==========================================
+var totalModelos = 100;
+var tamanhoGrade = 6;   
+var espacamento = 55;   
+var deslocamento = (tamanhoGrade * espacamento) / 2;
+
+mostrarNotificacao("⚙️ INICIALIZANDO GERADOR...", "#ffff00");
+
+if (typeof loaderGLTF === 'undefined' || typeof scene === 'undefined') {
+    mostrarNotificacao("❌ ERRO: Motor do jogo não encontrado!", "#ff3333");
+} else {
+    mostrarNotificacao("📂 Lendo USB: file:///usb/sda1/3djogo/3d/", "#00ffff");
+
+    for (var x = 0; x < tamanhoGrade; x++) {
+        for (var z = 0; z < tamanhoGrade; z++) {
+            
+            if (Math.random() < 0.20) continue;
+
+            var id = Math.floor(Math.random() * totalModelos) + 1;
+            var url = "file:///usb/sda1/3djogo/3d/" + id + ".glb";
+            
+            var px = (x * espacamento) - deslocamento;
+            var pz = (z * espacamento) - deslocamento;
+
+            (function(posX, posZ, oId, oUrl) {
+                
+                loaderGLTF.load(oUrl, function(gltf) {
+                    var predio = gltf.scene;
+                    
+                    predio.position.set(posX, 0, posZ);
+                    
+                    var deusesDaRotacao = [0, Math.PI / 2, Math.PI, (3 * Math.PI) / 2];
+                    predio.rotation.y = deusesDaRotacao[Math.floor(Math.random() * deusesDaRotacao.length)];
+                    
+                    predio.scale.set(6, 6, 6);
+                    
+                    scene.add(predio);
+                    
+                    mostrarNotificacao("✔️ Modelo " + oId + ".glb adicionado!", "#00ff00");
+                    
+                }, undefined, function(err) {
+                    var msgErro = (err && err.message) ? err.message : "CORS / Não encontrado";
+                    mostrarNotificacao("⚠️ Falha no modelo " + oId + ".glb: " + msgErro, "#ff3333");
+                });
+
+            })(px, pz, id, url);
+
+        }
+    }
+}
