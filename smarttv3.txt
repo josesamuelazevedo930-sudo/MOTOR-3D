@@ -1,0 +1,267 @@
+(function() {
+    // Remove sistemas antigos para não duplicar caso reexecute
+    const antigoContainer = document.getElementById('sflick-tv-container');
+    if(antigoContainer) antigoContainer.remove();
+    const antigoBtn = document.getElementById('sflick-ctrl-btn');
+    if(antigoBtn) antigoBtn.remove();
+
+    // --- 1. ESTILOS DA INTERFACE (SFLICK OS & CONTROLE) ---
+    const estilos = document.createElement('style');
+    estilos.innerHTML = `
+        /* Container Principal da TV */
+        #sflick-tv-container {
+            position: absolute;
+            top: 5%;
+            left: 5%;
+            width: 65vw;
+            height: 40vw;
+            max-width: 800px;
+            max-height: 450px;
+            background: #000;
+            border: 4px solid #333;
+            border-radius: 12px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.8);
+            z-index: 9999;
+            display: none;
+            flex-direction: column;
+            overflow: hidden;
+            font-family: 'Segoe UI', Roboto, sans-serif;
+        }
+
+        /* Tela de Boot Sflick */
+        #sflick-boot {
+            position: absolute; top:0; left:0; width:100%; height:100%;
+            background: #0d0d0d; display: flex; flex-direction: column;
+            align-items: center; justify-content: center; z-index: 10;
+        }
+        .sflick-logo { font-size: 42px; font-weight: bold; color: #00ffcc; letter-spacing: 2px; margin-bottom: 20px; }
+        .barrinha { width: 200px; height: 4px; background: #222; border-radius: 2px; overflow:hidden; }
+        .barrinha-progresso { width: 0%; height: 100%; background: #00ffcc; transition: width 3s linear; }
+
+        /* Sistema Android TV (Home) */
+        #sflick-home {
+            width: 100%; height: 100%;
+            background: linear-gradient(135deg, #111726 0%, #1c273a 100%);
+            color: white; padding: 20px; box-sizing: border-box;
+            display: flex; flex-direction: column;
+        }
+        .tv-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px; }
+        .tv-apps-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-top: 20px; }
+        .app-card { 
+            background: rgba(255,255,255,0.06); border: 2px solid transparent; border-radius: 8px; 
+            padding: 20px; text-align: center; cursor: pointer; transition: 0.2s;
+        }
+        .app-card.selected { border-color: #00ffcc; background: rgba(0,255,204,0.1); transform: scale(1.02); }
+        .app-card i { font-size: 28px; display: block; margin-bottom: 8px; }
+
+        /* Janelas dos Apps Internos */
+        .app-window { width:100%; height:100%; display:none; background:#000; position:relative; }
+        #tv-video-player { width: 100%; height: 100%; object-fit: contain; }
+        
+        /* Controle Remoto Organizado */
+        #sflick-remote {
+            position: absolute; right: 20px; top: 185px; width: 160px;
+            background: rgba(20, 20, 20, 0.96); border: 2px solid #4a148c;
+            border-radius: 16px; padding: 12px; color: white; z-index: 10000;
+            display: none; font-family: sans-serif; text-align: center;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.6);
+        }
+        .dpad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; margin: 15px 0; justify-items: center; }
+        .dpad-btn { width: 42px; height: 42px; background: #333; color: white; border: none; border-radius: 50%; font-weight: bold; cursor: pointer; }
+        .dpad-btn:active { background: #555; }
+        #btn-ok { background: #00ffcc; color: #000; border-radius: 6px; }
+
+        .row-btn { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-top: 10px; }
+        .ctrl-action { background: #444; color: white; border: none; padding: 8px; border-radius: 4px; font-size: 11px; cursor: pointer; font-weight: bold; }
+        #btn-power { background: #ff3333; border-radius: 50%; width: 45px; height: 45px; margin: 0 auto 10px auto; display: block; font-size: 16px; }
+    `;
+    document.head.appendChild(estilos);
+
+    // --- 2. CONSTRUÇÃO DA SMART TV (HTML) ---
+    const tvContainer = document.createElement('div');
+    tvContainer.id = 'sflick-tv-container';
+    tvContainer.innerHTML = `
+        <div id="sflick-boot" style="display:none;">
+            <div class="sflick-logo">sflick</div>
+            <div class="barrinha"><div class="barrinha-progresso" id="boot-progress"></div></div>
+            <span style="color:#555; font-size:11px; margin-top:10px; font-family:monospace;">Android TV OS Loader...</span>
+        </div>
+
+        <div id="sflick-home">
+            <div class="tv-header">
+                <span style="font-weight:bold; color:#00ffcc;">sflick TV OS v5.0</span>
+                <span id="tv-clock">22:00</span>
+            </div>
+            <p style="font-size:13px; color:#aaa; margin: 15px 0 5px 0;">Menu Inicial / Aplicativos</p>
+            <div class="tv-apps-grid">
+                <div class="app-card selected" id="app-0"><div>🎬</div><b>USB Player</b><br><span style="font-size:10px;color:#888;">Vídeos Local</span></div>
+                <div class="app-card" id="app-1"><div>🌐</div><b>Navegador</b><br><span style="font-size:10px;color:#888;">Internet Web</span></div>
+                <div class="app-card" id="app-2"><div>🎮</div><b>Snake Game</b><br><span style="font-size:10px;color:#888;">Jogo Clássico</span></div>
+            </div>
+            <div style="margin-top:auto; background:rgba(255,255,255,0.03); padding:10px; border-radius:6px; font-size:12px;">
+                <b>Mídia USB Atual pré-selecionada:</b> <span id="usb-status" style="color:#00ffcc;">1.mp4</span>
+            </div>
+        </div>
+
+        <div id="win-video" class="app-window">
+            <video id="tv-video-player" controls></video>
+        </div>
+
+        <div id="win-browser" class="app-window">
+            <iframe id="tv-iframe" src="https://bing.com" style="width:100%; height:100%; border:none; background:#fff;"></iframe>
+        </div>
+
+        <div id="win-game" class="app-window" style="background:#111; color:#fff; text-align:center; padding-top:40px;">
+            <h3>SNAKE GAME (Sflick Arcade)</h3>
+            <p>Use o controle para mudar de canais ou voltar para a Home.</p>
+            <canvas id="snakeCanvas" width="300" height="200" style="background:#000; border:2px solid #fff; margin:0 auto; display:block;"></canvas>
+        </div>
+    `;
+    document.body.appendChild(tvContainer);
+
+    // --- 3. CONSTRUÇÃO DO CONTROLE REMOTO ORGANIZADO (D-PAD GRID) ---
+    const remoteBtn = document.createElement('button');
+    remoteBtn.id = 'sflick-ctrl-btn';
+    remoteBtn.innerText = "📺 CONTROLE TV";
+    remoteBtn.style = "position:absolute; left:20px; top:20px; width:110px; padding:12px; background:#4a148c; color:white; border:none; font-weight:bold; border-radius:8px; z-index:10001; box-shadow:0 4px #000; cursor:pointer;";
+    document.body.appendChild(remoteBtn);
+
+    const remotePanel = document.createElement('div');
+    remotePanel.id = 'sflick-remote';
+    remotePanel.innerHTML = `
+        <button id="btn-power">⭕</button>
+        <div style="font-size:10px; color:#888; margin-bottom:5px;">SFLICK NAVEGADOR</div>
+        
+        <div class="dpad">
+            <div></div><button class="dpad-btn" id="btn-up">▲</button><div></div>
+            <button class="dpad-btn" id="btn-left">◀</button><button class="dpad-btn" id="btn-ok">OK</button><button class="dpad-btn" id="btn-right">▶</button>
+            <div></div><button class="dpad-btn" id="btn-down">▼</button><div></div>
+        </div>
+
+        <div style="font-size:11px; margin-bottom:2px;">CANAL SELECIONADO:</div>
+        <input type="number" id="num-ch" min="1" max="100" value="1" style="width:60px; text-align:center; background:#000; color:#00ffcc; border:1px solid #4a148c; font-weight:bold; border-radius:4px; margin-bottom:10px;">
+        
+        <div class="row-btn">
+            <button class="ctrl-action" id="btn-home">🏠 HOME</button>
+            <button class="ctrl-action" id="btn-back">🔙 VOLTAR</button>
+        </div>
+    `;
+    document.body.appendChild(remotePanel);
+
+    // --- 4. LÓGICA E CONTROLE DO SISTEMA OPERACIONAL ---
+    let tvLigada = false;
+    let indexApp = 0;
+    let canalAtual = 1;
+    let subMenuAtivo = "home"; // "home", "video", "browser", "game"
+    const totalApps = 3;
+    const vPlayer = document.getElementById('tv-video-player');
+
+    // Abre/Fecha Janela Física do Controle na Tela do Jogo
+    remoteBtn.onclick = () => {
+        remotePanel.style.display = remotePanel.style.display === 'none' ? 'block' : 'none';
+    };
+
+    // Botão Power (Liga com Animação de Boot Sflick)
+    document.getElementById('btn-power').onclick = () => {
+        if (!tvLigada) {
+            tvLigada = true;
+            document.getElementById('sflick-tv-container').style.display = 'flex';
+            document.getElementById('sflick-boot').style.display = 'flex';
+            document.getElementById('boot-progress').style.width = '100%';
+            
+            setTimeout(() => {
+                document.getElementById('sflick-boot').style.display = 'none';
+                irPara("home");
+            }, 3100);
+        } else {
+            tvLigada = false;
+            vPlayer.pause();
+            document.getElementById('sflick-tv-container').style.display = 'none';
+            document.getElementById('boot-progress').style.width = '0%';
+        }
+    };
+
+    // Navegação Direcional do Controle (D-PAD)
+    document.getElementById('btn-left').onclick = () => {
+        if(subMenuAtivo !== "home") return;
+        mudarSelecaoApp(-1);
+    };
+    document.getElementById('btn-right').onclick = () => {
+        if(subMenuAtivo !== "home") return;
+        mudarSelecaoApp(1);
+    };
+    
+    // Setas para Cima e para Baixo alteram o número do canal de vídeo de 1 a 100
+    document.getElementById('btn-up').onclick = () => {
+        let v = parseInt(document.getElementById('num-ch').value);
+        if(v < 100) { canalAtual = v + 1; document.getElementById('num-ch').value = canalAtual; atualizarCanalTxt(); }
+    };
+    document.getElementById('btn-down').onclick = () => {
+        let v = parseInt(document.getElementById('num-ch').value);
+        if(v > 1) { canalAtual = v - 1; document.getElementById('num-ch').value = canalAtual; atualizarCanalTxt(); }
+    };
+
+    // Botão OK (Executa o App Selecionado ou Força o Play no Canal Digitado)
+    document.getElementById('btn-ok').onclick = () => {
+        if(!tvLigada) return;
+        if(subMenuAtivo === "home") {
+            if(indexApp === 0) abrirVideoPlayer();
+            if(indexApp === 1) irPara("browser");
+            if(indexApp === 2) irPara("game");
+        } else if (subMenuAtivo === "video") {
+            // Se já estiver no player, OK altera o canal baseado no input numérico
+            canalAtual = parseInt(document.getElementById('num-ch').value) || 1;
+            rodarVideoLocal();
+        }
+    };
+
+    document.getElementById('btn-home').onclick = () => { if(tvLigada) irPara("home"); };
+    document.getElementById('btn-back').onclick = () => { if(tvLigada) irPara("home"); };
+
+    function mudarSelecaoApp(dir) {
+        document.getElementById(`app-${indexApp}`).classList.remove('selected');
+        indexApp = (indexApp + dir + totalApps) % totalApps;
+        document.getElementById(`app-${indexApp}`).classList.add('selected');
+    }
+
+    function atualizarCanalTxt() {
+        document.getElementById('usb-status').innerText = `${canalAtual}.mp4`;
+    }
+
+    function irPara(tela) {
+        subMenuAtivo = tela;
+        vPlayer.pause();
+        
+        // Oculta todas as telas internas
+        document.getElementById('sflick-home').style.display = tela === "home" ? "flex" : "none";
+        document.getElementById('win-video').style.display = tela === "video" ? "block" : "none";
+        document.getElementById('win-browser').style.display = tela === "browser" ? "block" : "none";
+        document.getElementById('win-game').style.display = tela === "game" ? "block" : "none";
+    }
+
+    function abrirVideoPlayer() {
+        irPara("video");
+        canalAtual = parseInt(document.getElementById('num-ch').value) || 1;
+        rodarVideoLocal();
+    }
+
+    function rodarVideoLocal() {
+        // Forçando o carregamento absoluto do arquivo do sistema dentro do player nativo do navegador
+        const caminhoCompleto = `file:///usb/sda1/3djogo/video/${canalAtual}.mp4`;
+        console.log("Sflick OS carregando faixa: " + caminhoCompleto);
+        
+        vPlayer.src = caminhoCompleto;
+        vPlayer.load();
+        vPlayer.play().catch(err => {
+            console.log("Bloqueio de segurança local ativo. Lembre-se de rodar seu navegador com a flag '--allow-file-access-from-files' para que o arquivo carregue.");
+        });
+    }
+
+    // Atualizador do relógio do topo do Android TV
+    setInterval(() => {
+        let d = new Date();
+        document.getElementById('tv-clock').innerText = `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+    }, 1000);
+
+    console.log("Sistema de Entretenimento Sflick Android TV inicializado.");
+})();
