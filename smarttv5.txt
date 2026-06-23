@@ -1,0 +1,242 @@
+(function() {
+    // Limpeza de resíduos anteriores
+    ['sflick-remote-control', 'sflick-css3d-layer'].forEach(id => {
+        const el = document.getElementById(id); if(el) el.remove();
+    });
+
+    // --- 1. IMPORTAR RENDERIZADOR CSS3D PARA O OBJETO FICAR NO MAPA ---
+    if (!THREE.CSS3DRenderer) {
+        const script = document.createElement('script');
+        script.src = "https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/renderers/CSS3DRenderer.js";
+        document.head.appendChild(script);
+    }
+
+    // --- 2. SISTEMA DE ÁUDIO (SONS DA ANDROID TV) ---
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    function playSound(type) {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+
+        if (type === 'click') {
+            osc.frequency.setValueAtTime(400, audioCtx.currentTime);
+            gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+            osc.start(); osc.stop(audioCtx.currentTime + 0.05);
+        } else if (type === 'boot') {
+            osc.frequency.setValueAtTime(220, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(880, audioCtx.currentTime + 0.4);
+            gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+            osc.start(); osc.stop(audioCtx.currentTime + 0.5);
+        }
+    }
+
+    // --- 3. ESTILOS DO HARDWARE DA TV E DO CONTROLE ---
+    const estilo = document.createElement('style');
+    estilo.innerHTML = `
+        #sflick-css3d-layer { position: absolute; top: 0; left: 0; z-index: 1; pointer-events: none; }
+        #sflick-css3d-layer * { pointer-events: auto; }
+
+        /* Interface da Android TV dentro do espaço 3D */
+        .tv-screen-3d {
+            width: 1024px; height: 576px; background: #000;
+            border: 20px solid #1a1a1a; border-radius: 16px;
+            box-sizing: border-box; font-family: sans-serif; overflow: hidden;
+        }
+
+        /* Layout Android TV */
+        .atv-layout { width: 100%; height: 100%; background: linear-gradient(180deg, #0f1219, #05070a); color: white; padding: 40px; box-sizing: border-box; display: flex; flex-direction: column; }
+        .atv-header { display: flex; justify-content: space-between; font-size: 24px; color: #9ca3af; margin-bottom: 40px; }
+        .atv-row { display: flex; gap: 30px; }
+        .atv-card { width: 280px; height: 160px; background: rgba(255,255,255,0.05); border: 4px solid transparent; border-radius: 12px; padding: 20px; display: flex; flex-direction: column; justify-content: flex-end; }
+        .atv-card.focused { border-color: #00ffcc; background: rgba(0,255,204,0.1); transform: scale(1.05); }
+        .atv-icon { font-size: 48px; margin-bottom: auto; }
+
+        /* Apps em Fullscreen na TV */
+        .tv-window { width: 100%; height: 100%; display: none; background: #000; }
+        #atv-video-player { width: 100%; height: 100%; object-fit: contain; }
+        
+        /* Boot */
+        .boot-screen { width: 100%; height: 100%; background: #09090b; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+        
+        /* Controle Remoto Lateral Organizado */
+        #sflick-remote-control {
+            position: absolute; right: 30px; top: 120px; width: 160px;
+            background: #18181b; border: 2px solid #27272a; border-radius: 24px;
+            padding: 20px 14px; z-index: 10000; display: none; box-shadow: 0 20px 50px rgba(0,0,0,0.7); text-align: center;
+        }
+        .remote-dpad { display: grid; grid-template-columns: repeat(3, 44px); grid-template-rows: repeat(3, 44px); gap: 6px; justify-content: center; margin: 15px 0; }
+        .dpad-arrow { width: 100%; height: 100%; background: #27272a; color: #fff; border: none; border-radius: 8px; font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+        #r-ok { background: #00ffcc; color: #09090b; font-weight: bold; border-radius: 50%; }
+        .ch-selector { width: 100%; background: #09090b; border: 1px solid #3f3f46; border-radius: 6px; color: #00ffcc; padding: 5px; text-align: center; font-weight: bold; margin-bottom: 10px; box-sizing: border-box; }
+        .btn-action { background: #27272a; color: #e4e4e7; border: none; padding: 10px; border-radius: 8px; font-size: 11px; font-weight: bold; cursor: pointer; width: 48%; }
+    `;
+    document.head.appendChild(estilo);
+
+    // --- 4. CRIAÇÃO DA INTERFACES DO MONITOR DA TV (HTML ELEMENT) ---
+    const tvElement = document.createElement('div');
+    tvElement.className = 'tv-screen-3d';
+    tvElement.innerHTML = `
+        <div id="atv-boot" class="boot-screen" style="display:none;">
+            <h1 style="color:#00ffcc; font-size:64px; font-style:italic; margin:0;">sflick</h1>
+            <p style="color:#444; font-family:monospace;">Carregando Android TV...</p>
+        </div>
+
+        <div id="atv-home" class="atv-layout">
+            <div class="atv-header">
+                <span style="font-weight:bold; color:#00ffcc;">sflick TV</span>
+                <span id="atv-clock">12:00</span>
+            </div>
+            <h2 style="font-size:20px; color:#9ca3af; margin:0 0 20px 0;">Aplicativos</h2>
+            <div class="atv-row">
+                <div class="atv-card focused" id="atv-app-0">
+                    <div class="atv-icon">🎬</div>
+                    <h3 style="margin:0;">Media Player</h3>
+                </div>
+                <div class="atv-card" id="atv-app-1">
+                    <div class="atv-icon">🌐</div>
+                    <h3 style="margin:0;">Navegador Web</h3>
+                </div>
+            </div>
+        </div>
+
+        <div id="atv-win-video" class="tv-window">
+            <video id="atv-video-player" controls></video>
+        </div>
+
+        <div id="atv-win-browser" class="tv-window">
+            <iframe id="atv-iframe" src="https://start.duckduckgo.com" style="width:100%; height:100%; border:none;"></iframe>
+        </div>
+    `;
+
+    // --- 5. INSERIR A TV NO MAPA 3D (THREE.JS CSS3DOBJECT) ---
+    function iniciarObjeto3D() {
+        if (!THREE.CSS3DRenderer) { setTimeout(iniciarObjeto3D, 100); return; }
+
+        const cssContainer = document.createElement('div');
+        cssContainer.id = 'sflick-css3d-layer';
+        document.body.appendChild(cssContainer);
+
+        window.cssRenderer = new THREE.CSS3DRenderer();
+        window.cssRenderer.setSize(window.innerWidth, window.innerHeight);
+        cssContainer.appendChild(window.cssRenderer.domElement);
+
+        // Criar o objeto e colocar na cena do mapa
+        const obj3D = new THREE.CSS3DObject(tvElement);
+        // Posição no mapa (Ajuste as coordenadas x, y, z se necessário para o seu mapa)
+        obj3D.position.set(0, 25, -60);
+        obj3D.scale.set(0.04, 0.04, 0.04); // Diminuído para encaixar no cenário
+        scene.add(obj3D);
+
+        // Sincronizar o renderizador do jogo com a TV
+        const originalRender = renderer.render;
+        renderer.render = function(sc, cam) {
+            originalRender.call(renderer, sc, cam);
+            window.cssRenderer.render(sc, cam);
+        };
+    }
+    setTimeout(iniciarObjeto3D, 200);
+
+    // --- 6. CRIAÇÃO DO CONTROLE REMOTO NO HUD ---
+    const remoteMenuBtn = document.createElement('button');
+    remoteMenuBtn.innerText = "📺 CONTROLE TV";
+    remoteMenuBtn.style = "position:absolute; left:20px; top:20px; width:110px; padding:12px; background:#18181b; color:#00ffcc; border:2px solid #27272a; font-weight:bold; border-radius:8px; z-index:10001; cursor:pointer;";
+    document.body.appendChild(remoteMenuBtn);
+
+    const remoteHardware = document.createElement('div');
+    remoteHardware.id = 'sflick-remote-control';
+    remoteHardware.innerHTML = `
+        <button id="r-power" style="width:44px; height:44px; background:#ef4444; border:none; border-radius:50%; color:white; font-size:18px; cursor:pointer;">⭕</button>
+        <div class="remote-dpad">
+            <div></div><button class="dpad-arrow" id="r-up">▲</button><div></div>
+            <button class="dpad-arrow" id="r-left">◀</button><button class="dpad-arrow" id="r-ok">OK</button><button class="dpad-arrow" id="r-right">▶</button>
+            <div></div><button class="dpad-arrow" id="r-down">▼</button><div></div>
+        </div>
+        <input type="number" id="r-ch-input" class="ch-selector" min="1" max="100" value="1">
+        <div style="display:flex; justify-content:space-between;">
+            <button class="btn-action" id="r-home">🏠 HOME</button>
+            <button class="btn-action" id="r-back">🔙 VOLTAR</button>
+        </div>
+    `;
+    document.body.appendChild(remoteHardware);
+
+    // --- 7. LOGICA DO CONTROLE E SISTEMA OPERACIONAL ---
+    let ligada = false;
+    let appIndex = 0;
+    let canal = 1;
+    let contexto = "home";
+    const vPlayer = document.getElementById('atv-video-player');
+
+    remoteMenuBtn.onclick = () => remoteHardware.style.display = remoteHardware.style.display === 'none' ? 'block' : 'none';
+
+    document.getElementById('r-power').onclick = () => {
+        if (!ligada) {
+            ligada = true;
+            playSound('boot');
+            tvElement.style.display = 'block';
+            document.getElementById('atv-boot').style.display = 'flex';
+            setTimeout(() => {
+                document.getElementById('atv-boot').style.display = 'none';
+                mudarTela("home");
+            }, 2000);
+        } else {
+            ligada = false;
+            vPlayer.pause();
+            tvElement.style.display = 'none';
+        }
+    };
+
+    document.getElementById('r-left').onclick = () => { playSound('click'); if(contexto === "home") alternarFocoApp(-1); };
+    document.getElementById('r-right').onclick = () => { playSound('click'); if(contexto === "home") alternarFocoApp(1); };
+
+    document.getElementById('r-up').onclick = () => { playSound('click'); mudarCanalFisico(1); };
+    document.getElementById('r-down').onclick = () => { playSound('click'); mudarCanalFisico(-1); };
+
+    document.getElementById('r-ok').onclick = () => {
+        if (!ligada) return;
+        playSound('click');
+        if (contexto === "home") {
+            if (appIndex === 0) { mudarTela("video"); tocarVideo(); }
+            if (appIndex === 1) mudarTela("browser");
+        } else if (contexto === "video") {
+            canal = parseInt(document.getElementById('r-ch-input').value) || 1;
+            tocarVideo();
+        }
+    };
+
+    document.getElementById('r-home').onclick = () => { if(ligada) mudarTela("home"); };
+    document.getElementById('r-back').onclick = () => { if(ligada) mudarTela("home"); };
+
+    function alternarFocoApp(dir) {
+        document.getElementById(`atv-app-${appIndex}`).classList.remove('focused');
+        appIndex = (appIndex + dir + 2) % 2;
+        document.getElementById(`atv-app-${appIndex}`).classList.add('focused');
+    }
+
+    function mudarCanalFisico(val) {
+        let n = parseInt(document.getElementById('r-ch-input').value) + val;
+        if (n >= 1 && n <= 100) {
+            canal = n;
+            document.getElementById('r-ch-input').value = canal;
+        }
+    }
+
+    function mudarTela(alvo) {
+        contexto = alvo;
+        vPlayer.pause();
+        document.getElementById('atv-home').style.display = alvo === "home" ? "flex" : "none";
+        document.getElementById('atv-win-video').style.display = alvo === "video" ? "block" : "none";
+        document.getElementById('atv-win-browser').style.display = alvo === "browser" ? "block" : "none";
+    }
+
+    function tocarVideo() {
+        vPlayer.src = `file:///usb/sda1/3djogo/video/${canal}.mp4`;
+        vPlayer.load();
+        vPlayer.play().catch(() => console.log("Aguardando permissão de arquivo local."));
+    }
+
+    setInterval(() => {
+        let d = new Date();
+        document.getElementById('atv-clock').innerText = d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+    }, 1000);
+})();
