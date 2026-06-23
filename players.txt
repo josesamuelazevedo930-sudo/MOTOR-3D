@@ -1,0 +1,328 @@
+// ==========================================
+// 1. CRIAR CONTAINER DE NOTIFICAÇÕES (INVISÍVEL)
+// ==========================================
+var antigoContainer = document.getElementById('notif-container');
+if (antigoContainer) antigoContainer.remove(); 
+
+var container = document.createElement('div');
+container.id = 'notif-container';
+container.style.position = 'absolute';
+container.style.left = '20px';
+container.style.bottom = '120px'; 
+container.style.display = 'flex';
+container.style.flexDirection = 'column';
+container.style.gap = '6px';
+container.style.zIndex = '9999';
+container.style.pointerEvents = 'none'; 
+document.body.appendChild(container);
+
+function mostrarNotificacao(txt, cor) {
+    var nota = document.createElement('div');
+    nota.style.background = 'rgba(0, 0, 0, 0.75)';
+    nota.style.color = cor || '#fff';
+    nota.style.fontFamily = 'monospace';
+    nota.style.fontSize = '12px';
+    nota.style.padding = '8px 12px';
+    nota.style.borderRadius = '5px';
+    nota.style.borderLeft = '4px solid ' + (cor || '#fff');
+    nota.style.transition = 'opacity 0.5s ease, transform 0.5s ease';
+    nota.style.transform = 'translateX(-20px)';
+    nota.style.opacity = '0';
+    nota.innerText = txt;
+    container.appendChild(nota);
+    setTimeout(function() { nota.style.opacity = '1'; nota.style.transform = 'translateX(0)'; }, 10);
+    setTimeout(function() {
+        nota.style.opacity = '0';
+        nota.style.transform = 'translateY(-10px)';
+        setTimeout(function() { nota.remove(); }, 500);
+    }, 4000);
+}
+
+// ==========================================
+// 2. CONFIGURAÇÕES DE LINKS E AUDIO 3D
+// ==========================================
+var totalModelos = 100;
+var tamanhoGrade = 6;   
+var margemSeguranca = 4; // Reduzido proporcionalmente para o tamanho normal dos objetos
+var objetosVivosData = [];
+
+mostrarNotificacao("⚙️ GERANDO ECOSSISTEMA COM PERSONALIDADES...", "#ffff00");
+
+if (typeof camera !== 'undefined' && !camera.getObjectByName("ReceptorAudio")) {
+    var listener = new THREE.AudioListener();
+    listener.name = "ReceptorAudio";
+    camera.add(listener);
+}
+var listenerAtivo = camera.getObjectByName("ReceptorAudio") || new THREE.AudioListener();
+
+var audioLoader = new THREE.AudioLoader();
+var somEfeitoUrl = "https://actions.google.com/sounds/v1/foley/drawbridge_creak.ogg"; 
+var somPassoUrl = "https://actions.google.com/sounds/v1/foley/footsteps_on_gravel.ogg"; 
+
+var largurasAcumuladasX = new Array(tamanhoGrade).fill(0);
+var comprimentosAcumuladosZ = new Array(tamanhoGrade).fill(0);
+
+// Comportamentos e inteligências distintas para cada criatura
+var tiposPersonalidade = ['Guarda', 'Fugitivo', 'Curioso', 'Dançarino', 'Estátua'];
+
+if (typeof loaderGLTF === 'undefined' || typeof scene === 'undefined') {
+    mostrarNotificacao("❌ ERRO: Motor do jogo não encontrado!", "#ff3333");
+} else {
+    // Apontando exatamente para a sua pasta /glb/ no dispositivo USB
+    mostrarNotificacao("📂 Lendo USB e Distribuindo Almas: file:///usb/sda1/3djogo/glb/", "#00ffff");
+
+    for (var x = 0; x < tamanhoGrade; x++) {
+        for (var z = 0; z < tamanhoGrade; z++) {
+            
+            if (Math.random() < 0.15) continue; 
+
+            var id = Math.floor(Math.random() * totalModelos) + 1;
+            var url = "file:///usb/sda1/3djogo/glb/" + id + ".glb";
+
+            (function(gridX, gridZ, oId, oUrl) {
+                
+                loaderGLTF.load(oUrl, function(gltf) {
+                    var criaturaMesh = gltf.scene;
+                    
+                    var pivotBase = new THREE.Group();
+                    pivotBase.add(criaturaMesh);
+                    
+                    var grupoMestre = new THREE.Group();
+                    grupoMestre.add(pivotBase);
+
+                    // ==========================================
+                    // TAMANHO CORRIGIDO PARA ESCALA DO JOGADOR
+                    // ==========================================
+                    var escalaBase = 1.0; 
+                    criaturaMesh.scale.set(escalaBase, escalaBase, escalaBase);
+                    
+                    var deusesDaRotacao = [0, Math.PI / 2, Math.PI, (3 * Math.PI) / 2];
+                    grupoMestre.rotation.y = deusesDaRotacao[Math.floor(Math.random() * deusesDaRotacao.length)];
+                    
+                    var box = new THREE.Box3().setFromObject(criaturaMesh);
+                    var tamanhoReal = new THREE.Vector3();
+                    box.getSize(tamanhoReal);
+
+                    var posX = largurasAcumuladasX[gridX] + (tamanhoReal.x / 2);
+                    var posZ = comprimentosAcumuladosZ[gridZ] + (tamanhoReal.z / 2);
+                    var centralizarOffset = 15; // Ajustado para manter a grade por perto
+                    
+                    grupoMestre.position.set(posX - centralizarOffset, 0, posZ - centralizarOffset);
+                    
+                    largurasAcumuladasX[gridX] += tamanhoReal.x + margemSeguranca;
+                    comprimentosAcumuladosZ[gridZ] += tamanhoReal.z + margemSeguranca;
+
+                    var audioPosicionalEfeito = new THREE.PositionalAudio(listenerAtivo);
+                    audioLoader.load(somEfeitoUrl, function(buffer) {
+                        audioPosicionalEfeito.setBuffer(buffer);
+                        audioPosicionalEfeito.setRefDistance(5); // Distância mais curta e realista para tamanho humano
+                        audioPosicionalEfeito.setVolume(1.0);
+                    });
+                    grupoMestre.add(audioPosicionalEfeito);
+
+                    var audioPosicionalPassos = new THREE.PositionalAudio(listenerAtivo);
+                    audioLoader.load(somPassoUrl, function(buffer) {
+                        audioPosicionalPassos.setBuffer(buffer);
+                        audioPosicionalPassos.setRefDistance(3);
+                        audioPosicionalPassos.setVolume(0.25);
+                    });
+                    grupoMestre.add(audioPosicionalPassos);
+
+                    if (typeof mapModel !== 'undefined' && mapModel) {
+                        mapModel.add(grupoMestre);
+                    } else {
+                        scene.add(grupoMestre);
+                    }
+
+                    // Define qual a personalidade deste objeto com base nas coordenadas
+                    var minhaPersonalidade = tiposPersonalidade[(oId + gridX + gridZ) % tiposPersonalidade.length];
+
+                    objetosVivosData.push({
+                        mestre: grupoMestre,
+                        pivot: pivotBase,
+                        mesh: criaturaMesh,
+                        audioEfeito: audioPosicionalEfeito,
+                        audioPassos: audioPosicionalPassos,
+                        personalidade: minhaPersonalidade,
+                        state: 'idle',
+                        timer: Math.random() * 4,
+                        targetX: grupoMestre.position.x,
+                        targetZ: grupoMestre.position.z,
+                        speed: 0.05 + Math.random() * 0.04, // Velocidade balanceada para pernas de tamanho normal
+                        escalaOriginal: escalaBase,
+                        
+                        animTime: Math.random() * 100,
+                        somTimer: 8 + Math.random() * 25,
+                        velY: 0,
+                        isGrounded: true,
+                        jumpTimer: 5 + Math.random() * 15
+                    });
+                    
+                    mostrarNotificacao("🎭 [" + minhaPersonalidade + "] ID " + oId + " acordou!", "#00ff00");
+                    
+                }, undefined, function(err) {
+                    mostrarNotificacao("⚠️ Falha ao despertar " + oId + ".glb", "#ff3333");
+                });
+
+            })(x, z, id, url);
+        }
+    }
+}
+
+// ==========================================
+// 3. ENGINE DE COMPORTAMENTO INDIVIDUAL E FÍSICA
+// ==========================================
+var criaturaRaycaster = new THREE.Raycaster();
+var direcaoAbixo = new THREE.Vector3(0, -1, 0);
+
+function updateObjetosVivos() {
+    if (typeof player === 'undefined' || !player) return;
+
+    objetosVivosData.forEach(function(criatura) {
+        criatura.animTime += 0.05;
+        criatura.timer -= 0.016;
+        criatura.somTimer -= 0.016;
+        criatura.jumpTimer -= 0.016;
+
+        // 1. Ritmo de respiração sutil adaptado ao tamanho correto
+        var freqRespiracao = criatura.personalidade === 'Dançarino' ? 4 : 1.5;
+        var pulsar = criatura.escalaOriginal + Math.sin(criatura.animTime * freqRespiracao) * 0.015; 
+        criatura.mesh.scale.set(pulsar, pulsar + (Math.cos(criatura.animTime) * 0.01), pulsar);
+
+        // Sons esporádicos do objeto mexendo suas estruturas
+        if (criatura.somTimer <= 0) {
+            if (criatura.audioEfeito.buffer && !criatura.audioEfeito.isPlaying) {
+                criatura.audioEfeito.play();
+            }
+            criatura.somTimer = 15 + Math.random() * 30;
+        }
+
+        var distAoPlayer = criatura.mestre.position.distanceTo(player.position);
+
+        // 2. SISTEMA DE VIDA PRÓPRIA (Processador de Rotinas)
+        if (criatura.timer <= 0) {
+            criatura.timer = 4 + Math.random() * 6; 
+
+            if (criatura.personalidade === 'Estátua') {
+                criatura.state = 'idle';
+            } 
+            else if (criatura.personalidade === 'Dançarino') {
+                criatura.state = 'dancing';
+            } 
+            else if (criatura.personalidade === 'Guarda') {
+                criatura.state = 'walking';
+                criatura.targetX = criatura.mestre.position.x + (Math.random() > 0.5 ? 8 : -8);
+                criatura.targetZ = criatura.mestre.position.z + (Math.random() > 0.5 ? 8 : -8);
+            } 
+            else {
+                criatura.state = Math.random() > 0.5 ? 'walking' : 'idle';
+                if (criatura.state === 'walking') {
+                    criatura.targetX = criatura.mestre.position.x + (Math.random() - 0.5) * 15;
+                    criatura.targetZ = criatura.mestre.position.z + (Math.random() - 0.5) * 15;
+                }
+            }
+        }
+
+        // 3. IA de Reação de Proximidade (Raios de distância corrigidos para o tamanho novo)
+        if (distAoPlayer < 8) { 
+            if (criatura.personalidade === 'Curioso') {
+                // Te segue mantendo uma distância natural
+                criatura.state = 'following';
+                criatura.targetX = player.position.x;
+                criatura.targetZ = player.position.z;
+            } 
+            else if (criatura.personalidade === 'Fugitivo') {
+                // Foge de você assustado
+                criatura.state = 'walking';
+                var direcaoX = criatura.mestre.position.x - player.position.x;
+                var direcaoZ = criatura.mestre.position.z - player.position.z;
+                criatura.targetX = criatura.mestre.position.x + (direcaoX * 2.0);
+                criatura.targetZ = criatura.mestre.position.z + (direcaoZ * 2.0);
+            }
+            else if (criatura.personalidade === 'Dançarino' && criatura.jumpTimer > 1) {
+                criatura.jumpTimer = 0.5; // Faz pular mais frequentemente perto de você
+            }
+        }
+
+        // 4. Execução de Movimentação e Gingado Mecânico
+        if (criatura.state === 'walking' || criatura.state === 'following') {
+            var dx = criatura.targetX - criatura.mestre.position.x;
+            var dz = criatura.targetZ - criatura.mestre.position.z;
+            var distanciaAlvo = Math.sqrt(dx * dx + dz * dz);
+
+            if (distanciaAlvo > 0.5) {
+                var anguloOlhar = Math.atan2(dx, dz);
+                criatura.mestre.rotation.y = anguloOlhar;
+
+                var modVelocidade = criatura.personalidade === 'Fugitivo' ? 1.6 : 1.0;
+                criatura.mestre.position.x += Math.sin(anguloOlhar) * criatura.speed * modVelocidade;
+                criatura.mestre.position.z += Math.cos(anguloOlhar) * criatura.speed * modVelocidade;
+
+                criatura.mesh.rotation.z = Math.sin(criatura.animTime * 3) * 0.04;
+                criatura.mesh.rotation.x = Math.cos(criatura.animTime * 3) * 0.02;
+
+                if (criatura.isGrounded && Math.floor(criatura.animTime) % 6 === 0) {
+                    if (criatura.audioPassos.buffer && !criatura.audioPassos.isPlaying) {
+                        criatura.audioPassos.play();
+                    }
+                }
+            }
+        } 
+        else if (criatura.state === 'dancing') {
+            criatura.mestre.rotation.y += 0.05;
+            criatura.mesh.rotation.z = Math.sin(criatura.animTime * 4) * 0.08;
+        }
+        else {
+            criatura.mesh.rotation.z = 0;
+            criatura.mesh.rotation.x = 0;
+        }
+
+        // 5. PULO AJUSTADO E REALISTA (Pulinho sutil proporcional ao tamanho do jogador)
+        if (criatura.jumpTimer <= 0 && criatura.isGrounded && criatura.personalidade !== 'Estátua') {
+            criatura.velY = 0.06 + Math.random() * 0.03; 
+            criatura.isGrounded = false;
+            criatura.jumpTimer = 6 + Math.random() * 18;
+            
+            if (criatura.audioEfeito.buffer && !criatura.audioEfeito.isPlaying) {
+                criatura.audioEfeito.play();
+            }
+        }
+
+        // 6. Gravidade e Fixação ao Terreno do Mapa (Raycasting ajustado para escala curta)
+        if (!criatura.isGrounded) {
+            criatura.pivot.position.y += criatura.velY;
+            criatura.velY -= 0.012; 
+        }
+
+        if (typeof mapModel !== 'undefined' && mapModel) {
+            var checarY = criatura.mestre.position.y + criatura.pivot.position.y + 2;
+            criaturaRaycaster.set(new THREE.Vector3(criatura.mestre.position.x, checarY, criatura.mestre.position.z), direcaoAbixo);
+            var colisoesChao = criaturaRaycaster.intersectObject(mapModel, true);
+
+            if (colisoesChao.length > 0) {
+                var alturaChaoReal = colisoesChao[0].point.y;
+                var alturaAtualObjeto = criatura.mestre.position.y + criatura.pivot.position.y;
+
+                if (alturaAtualObjeto <= alturaChaoReal + 0.05 || colisoesChao[0].distance < 2.1) {
+                    criatura.mestre.position.y = alturaChaoReal;
+                    criatura.pivot.position.y = 0;
+                    criatura.velY = 0;
+                    criatura.isGrounded = true;
+                }
+            } else {
+                if (criatura.mestre.position.y < -150) {
+                    criatura.mestre.position.set((Math.random() - 0.5) * 50, 10, (Math.random() - 0.5) * 50);
+                    criatura.pivot.position.y = 0;
+                    criatura.velY = 0;
+                    criatura.isGrounded = false;
+                }
+            }
+        }
+    });
+}
+
+var oldAnimate = window.animate;
+window.animate = function() {
+    updateObjetosVivos();
+    oldAnimate();
+};
