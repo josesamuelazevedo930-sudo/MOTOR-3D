@@ -1,0 +1,56 @@
+// Configurações do gerador procedural
+const TOTAL_MODELOS = 100;
+const TAMANHO_GRADE = 6;  // Cria uma matriz de 6x6 (até 36 construções)
+const ESPACAMENTO = 45;   // Distância entre os lotes para os prédios não colidirem
+
+function gerarCidadeUSB() {
+    console.log("Iniciando geração de cidade via USB...");
+    
+    // Centraliza a cidade em torno do ponto zero do mapa
+    const offset = (TAMANHO_GRADE * ESPACAMENTO) / 2;
+
+    for (let x = 0; x < TAMANHO_GRADE; x++) {
+        for (let z = 0; z < TAMANHO_GRADE; z++) {
+            
+            // 15% de chance de deixar o lote vazio (cria ruas e praças aleatórias)
+            if (Math.random() < 0.15) continue;
+
+            // Sorteia um modelo de 1 a 100
+            const idModelo = Math.floor(Math.random() * TOTAL_MODELOS) + 1;
+            
+            // Caminho exato solicitado
+            const urlModelo = `file:///usb/sda1/3djogo/3d/${idModelo}.glb`;
+            
+            // Calcula a posição do lote com uma pequena variação natural (sub-grid jitter)
+            const posX = (x * ESPACAMENTO) - offset + (Math.random() * 6 - 3);
+            const posZ = (z * ESPACAMENTO) - offset + (Math.random() * 6 - 3);
+            const posY = 0; 
+
+            // Carrega o modelo usando o loader global do jogo
+            loaderGLTF.load(urlModelo, (gltf) => {
+                const objeto = gltf.scene;
+                
+                // Define a posição no mapa
+                objeto.position.set(posX, posY, posZ);
+                
+                // Rotaciona em ângulos retos (0, 90, 180 ou 270 graus) para alinhar com o quarteirão
+                const rotacoes = [0, Math.PI / 2, Math.PI, (3 * Math.PI) / 2];
+                objeto.rotation.y = rotacoes[Math.floor(Math.random() * rotacoes.length)];
+                
+                // Aplica uma escala padrão (ajuste esse valor se os modelos ficarem gigantes ou minúsculos)
+                objeto.scale.set(4, 4, 4); 
+                
+                // Adiciona o prédio à cena ativa do jogo
+                scene.add(objeto);
+            }, 
+            undefined, 
+            (error) => {
+                console.warn(`Não foi possível carregar o arquivo: ${idModelo}.glb no USB.`);
+            });
+        }
+    }
+    alert("Cidade procedural gerada a partir do USB!");
+}
+
+// Executa a função imediatamente ao carregar o script
+gerarCidadeUSB();
