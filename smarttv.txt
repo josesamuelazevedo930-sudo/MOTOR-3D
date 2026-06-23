@@ -1,0 +1,135 @@
+(function() {
+    // 1. CRIAR ELEMENTO DE VÍDEO (TEXTURA)
+    const video = document.createElement('video');
+    video.crossOrigin = "anonymous";
+    video.loop = false;
+    video.autoplay = false;
+    video.style.display = 'none';
+    document.body.appendChild(video);
+
+    let currentTrack = 1;
+    const basePath = "file:///usb/sda1/3djogo/video/";
+
+    function playVideo(num) {
+        currentTrack = Math.max(1, Math.min(100, num));
+        video.src = `${basePath}${currentTrack}.mp4`;
+        video.load();
+        video.play().catch(e => {
+            console.log("Aviso de segurança local: Se o arquivo sumir, configure seu navegador para permitir file:// acessos.");
+        });
+        updateSmartUI();
+    }
+
+    // 2. CRIAR A TV 3D NO SCENARIO (THREE.JS)
+    // Criando a carcaça da TV
+    const tvGroup = new THREE.Group();
+    const casingGeo = new THREE.BoxGeometry(16, 10, 1);
+    const casingMat = new THREE.MeshBasicMaterial({ color: 0x111111 });
+    const casing = new THREE.Mesh(casingGeo, casingMat);
+    tvGroup.add(casing);
+
+    // Criando a tela com a textura do vídeo
+    const videoTexture = new THREE.VideoTexture(video);
+    videoTexture.minFilter = THREE.LinearFilter;
+    videoTexture.magFilter = THREE.LinearFilter;
+    videoTexture.format = THREE.RGBFormat;
+
+    const screenGeo = new THREE.PlaneGeometry(15.2, 9.2);
+    const screenMat = new THREE.MeshBasicMaterial({ map: videoTexture });
+    const screen = new THREE.Mesh(screenGeo, screenMat);
+    screen.position.z = 0.51; // Levemente à frente da carcaça
+    tvGroup.add(screen);
+
+    // Interface Smart simulada sobre a textura (Canvas dinâmico)
+    const canvasSmart = document.createElement('canvas');
+    canvasSmart.width = 512;
+    canvasSmart.height = 256;
+    const ctxSmart = canvasSmart.getContext('2d');
+    const smartTexture = new THREE.CanvasTexture(canvasSmart);
+    
+    const smartInterfaceGeo = new THREE.PlaneGeometry(15.2, 9.2);
+    const smartInterfaceMat = new THREE.MeshBasicMaterial({ map: smartTexture, transparent: true, opacity: 0.8 });
+    const smartInterface = new THREE.Mesh(smartInterfaceGeo, smartInterfaceMat);
+    smartInterface.position.z = 0.52;
+    tvGroup.add(smartInterface);
+
+    // Posiciona a TV perto do Spawn do jogador
+    tvGroup.position.set(0, 55, -30); 
+    scene.add(tvGroup);
+
+    function updateSmartUI() {
+        ctxSmart.clearRect(0, 0, canvasSmart.width, canvasSmart.height);
+        // Barra superior Smart
+        ctxSmart.fillStyle = "rgba(0, 0, 0, 0.6)";
+        ctxSmart.fillRect(0, 0, canvasSmart.width, 50);
+        
+        ctxSmart.font = "bold 18px sans-serif";
+        ctxSmart.fillStyle = "#00ffcc";
+        ctxSmart.fillText(`Siri Smart TV OS v4.0`, 20, 32);
+        
+        // Info do vídeo atual
+        ctxSmart.fillStyle = "#ffffff";
+        ctxSmart.font = "14px sans-serif";
+        ctxSmart.fillText(`Vídeo Atual: ${currentTrack}.mp4`, 350, 32);
+
+        // Notificação rápida de mídia
+        ctxSmart.fillStyle = "rgba(0,123,255,0.8)";
+        ctxSmart.fillRect(20, 200, 220, 40);
+        ctxSmart.fillStyle = "#fff";
+        ctxSmart.fillText(`USB: sda1/ Conectado`, 35, 225);
+        
+        smartTexture.needsUpdate = true;
+    }
+    updateSmartUI();
+
+    // Ocultar HUB smart da tela da TV após 5 segundos ao dar play
+    video.onplay = () => {
+        setTimeout(() => {
+            ctxSmart.clearRect(0, 0, canvasSmart.width, canvasSmart.height);
+            smartTexture.needsUpdate = true;
+        }, 5000);
+    };
+
+    // 3. CONTROLE REMOTO (INTERFACE HTML)
+    const remoteBtn = document.createElement('button');
+    remoteBtn.innerText = "📺 CONTROLE TV";
+    remoteBtn.style = "position:absolute; left:20px; top:20px; width:120px; padding:12px; background:#6f42c1; color:white; border:none; font-weight:bold; border-radius:8px; z-index:102; box-shadow:0 4px #000; cursor:pointer;";
+    document.body.appendChild(remoteBtn);
+
+    const remotePanel = document.createElement('div');
+    remotePanel.style = "position:absolute; left:20px; top:80px; width:180px; background:rgba(20,20,20,0.95); border:3px solid #6f42c1; border-radius:12px; padding:15px; color:white; z-index:102; display:none; font-family:sans-serif; text-align:center;";
+    remotePanel.innerHTML = `
+        <h4 style="margin:0 0 10px 0; color:#00ffcc;">SMART REMOTE</h4>
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px; margin-bottom:10px;">
+            <button id="tv-prev" style="background:#333; color:#fff; border:none; padding:8px; border-radius:4px; font-weight:bold;">⏮️ ANTERIOR</button>
+            <button id="tv-next" style="background:#333; color:#fff; border:none; padding:8px; border-radius:4px; font-weight:bold;">PRÓXIMO ⏭️</button>
+        </div>
+        <input type="number" id="tv-ch" min="1" max="100" value="1" style="width:80%; padding:6px; background:#111; color:#fff; border:1px solid #6f42c1; text-align:center; border-radius:4px; margin-bottom:10px;">
+        <button id="tv-go" style="width:100%; background:#007bff; color:white; border:none; padding:8px; border-radius:4px; font-weight:bold; margin-bottom:5px;">IR PARA VÍDEO</button>
+        <button id="tv-smart" style="width:100%; background:#ff8800; color:white; border:none; padding:8px; border-radius:4px; font-weight:bold; margin-bottom:5px;">🏠 MENU SMART</button>
+        <button id="tv-pause" style="width:100%; background:#ff3333; color:white; border:none; padding:8px; border-radius:4px; font-weight:bold;">⏯️ PLAY/PAUSE</button>
+    `;
+    document.body.appendChild(remotePanel);
+
+    // Eventos do Controle
+    remoteBtn.onclick = () => {
+        remotePanel.style.display = remotePanel.style.display === 'none' ? 'block' : 'none';
+    };
+
+    remotePanel.querySelector('#tv-prev').onclick = () => { playVideo(currentTrack - 1); remotePanel.querySelector('#tv-ch').value = currentTrack; };
+    remotePanel.querySelector('#tv-next').onclick = () => { playVideo(currentTrack + 1); remotePanel.querySelector('#tv-ch').value = currentTrack; };
+    remotePanel.querySelector('#tv-go').onclick = () => { const val = parseInt(remotePanel.querySelector('#tv-ch').value); playVideo(val); };
+    remotePanel.querySelector('#tv-smart').onclick = () => { updateSmartUI(); };
+    remotePanel.querySelector('#tv-pause').onclick = () => { if(video.paused) video.play(); else video.pause(); };
+
+    // Atualização da animação da textura de vídeo
+    const originalAnimate = window.animate;
+    window.animate = function() {
+        originalAnimate();
+        if (video.readyState >= video.HAVE_CURRENT_DATA) {
+            videoTexture.needsUpdate = true;
+        }
+    };
+
+    console.log("Sistema de Smart TV acoplado com sucesso!");
+})();
