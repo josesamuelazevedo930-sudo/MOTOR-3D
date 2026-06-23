@@ -1,0 +1,50 @@
+// Limpa erros de escopo usando variáveis locais simples
+var totalModelos = 100;
+var tamanhoGrade = 6;
+var espacamento = 50;
+var deslocamento = (tamanhoGrade * espacamento) / 2;
+
+console.log("Executando Gerador de Cidade...");
+
+for (var x = 0; x < tamanhoGrade; x++) {
+    for (var z = 0; z < tamanhoGrade; z++) {
+        
+        // 20% de chance de deixar o lote vazio para virar rua
+        if (Math.random() < 0.20) continue;
+
+        // Sorteia o modelo de 1 a 100
+        var id = Math.floor(Math.random() * totalModelos) + 1;
+        var url = "file:///usb/sda1/3djogo/3d/" + id + ".glb";
+        
+        // Posição final na grade
+        var px = (x * espacamento) - deslocamento;
+        var pz = (z * espacamento) - deslocamento;
+
+        // Função interna isolada para segurar os valores de PX e PZ no loop assíncrono
+        (function(posX, posZ, oId, oUrl) {
+            loaderGLTF.load(oUrl, function(gltf) {
+                var predio = gltf.scene;
+                
+                // Força o modelo a ir para o ponto correto
+                predio.position.set(posX, 0, posZ);
+                
+                // Rotação aleatória em blocos de 90 graus
+                var deusesDaRotacao = [0, Math.PI / 2, Math.PI, (3 * Math.PI) / 2];
+                predio.rotation.y = deusesDaRotacao[Math.floor(Math.random() * deusesDaRotacao.length)];
+                
+                // Multiplica o tamanho por 5 (ajuste se sumir ou ficar gigante)
+                predio.scale.set(5, 5, 5);
+                
+                // Adiciona na cena do seu jogo
+                scene.add(predio);
+                
+            }, undefined, function(err) {
+                // Se der erro em um arquivo, ele pula e avisa no console sem travar o jogo
+                console.log("Erro ao ler modelo " + oId + ".glb no USB. Pulando...");
+            });
+        })(px, pz, id, url);
+
+    }
+}
+
+alert("Cidade procedural gerada!");
