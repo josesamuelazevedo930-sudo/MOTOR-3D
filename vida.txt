@@ -1,0 +1,283 @@
+// ==========================================
+// 1. CRIAR CONTAINER DE NOTIFICAÇÕES (INVISÍVEL)
+// ==========================================
+var antigoContainer = document.getElementById('notif-container');
+if (antigoContainer) antigoContainer.remove(); 
+
+var container = document.createElement('div');
+container.id = 'notif-container';
+container.style.position = 'absolute';
+container.style.left = '20px';
+container.style.bottom = '120px'; 
+container.style.display = 'flex';
+container.style.flexDirection = 'column';
+container.style.gap = '6px';
+container.style.zIndex = '9999';
+container.style.pointerEvents = 'none'; 
+document.body.appendChild(container);
+
+function mostrarNotificacao(txt, cor) {
+    var nota = document.createElement('div');
+    nota.style.background = 'rgba(0, 0, 0, 0.75)';
+    nota.style.color = cor || '#fff';
+    nota.style.fontFamily = 'monospace';
+    nota.style.fontSize = '12px';
+    nota.style.padding = '8px 12px';
+    nota.style.borderRadius = '5px';
+    nota.style.borderLeft = '4px solid ' + (cor || '#fff');
+    nota.style.transition = 'opacity 0.5s ease, transform 0.5s ease';
+    nota.style.transform = 'translateX(-20px)';
+    nota.style.opacity = '0';
+    nota.innerText = txt;
+    container.appendChild(nota);
+    setTimeout(function() { nota.style.opacity = '1'; nota.style.transform = 'translateX(0)'; }, 10);
+    setTimeout(function() {
+        nota.style.opacity = '0';
+        nota.style.transform = 'translateY(-10px)';
+        setTimeout(function() { nota.remove(); }, 500);
+    }, 4000);
+}
+
+// ==========================================
+// 2. CONFIGURAÇÕES DE LINKS E AUDIO 3D
+// ==========================================
+var totalModelos = 100;
+var tamanhoGrade = 6;   
+var margemSeguranca = 35; 
+var objetosVivosData = [];
+
+mostrarNotificacao("⚙️ INICIALIZANDO ECOSSISTEMA VIVO...", "#ffff00");
+
+if (typeof camera !== 'undefined' && !camera.getObjectByName("ReceptorAudio")) {
+    var listener = new THREE.AudioListener();
+    listener.name = "ReceptorAudio";
+    camera.add(listener);
+}
+var listenerAtivo = camera.getObjectByName("ReceptorAudio") || new THREE.AudioListener();
+
+var audioLoader = new THREE.AudioLoader();
+var somEfeitoUrl = "https://actions.google.com/sounds/v1/foley/drawbridge_creak.ogg"; 
+var somPassoUrl = "https://actions.google.com/sounds/v1/foley/footsteps_on_gravel.ogg"; 
+
+var largurasAcumuladasX = new Array(tamanhoGrade).fill(0);
+var comprimentosAcumuladosZ = new Array(tamanhoGrade).fill(0);
+
+if (typeof loaderGLTF === 'undefined' || typeof scene === 'undefined') {
+    mostrarNotificacao("❌ ERRO: Motor do jogo não encontrado!", "#ff3333");
+} else {
+    // PASTA CORRIGIDA EXATAMENTE PARA /glb/
+    mostrarNotificacao("📂 Lendo USB e Injetando Vida: file:///usb/sda1/3djogo/glb/", "#00ffff");
+
+    for (var x = 0; x < tamanhoGrade; x++) {
+        for (var z = 0; z < tamanhoGrade; z++) {
+            
+            if (Math.random() < 0.15) continue; 
+
+            var id = Math.floor(Math.random() * totalModelos) + 1;
+            // Caminho 100% atualizado com a pasta certa (/glb/)
+            var url = "file:///usb/sda1/3djogo/glb/" + id + ".glb";
+
+            (function(gridX, gridZ, oId, oUrl) {
+                
+                loaderGLTF.load(oUrl, function(gltf) {
+                    var criaturaMesh = gltf.scene;
+                    
+                    var pivotBase = new THREE.Group();
+                    pivotBase.add(criaturaMesh);
+                    
+                    var grupoMestre = new THREE.Group();
+                    grupoMestre.add(pivotBase);
+
+                    var escalaBase = 25; 
+                    criaturaMesh.scale.set(escalaBase, escalaBase, escalaBase);
+                    
+                    var deusesDaRotacao = [0, Math.PI / 2, Math.PI, (3 * Math.PI) / 2];
+                    grupoMestre.rotation.y = deusesDaRotacao[Math.floor(Math.random() * deusesDaRotacao.length)];
+                    
+                    var box = new THREE.Box3().setFromObject(criaturaMesh);
+                    var tamanhoReal = new THREE.Vector3();
+                    box.getSize(tamanhoReal);
+
+                    var posX = largurasAcumuladasX[gridX] + (tamanhoReal.x / 2);
+                    var posZ = comprimentosAcumuladosZ[gridZ] + (tamanhoReal.z / 2);
+                    var centralizarOffset = 300;
+                    
+                    grupoMestre.position.set(posX - centralizarOffset, 0, posZ - centralizarOffset);
+                    
+                    largurasAcumuladasX[gridX] += tamanhoReal.x + margemSeguranca;
+                    comprimentosAcumuladosZ[gridZ] += tamanhoReal.z + margemSeguranca;
+
+                    var audioPosicionalEfeito = new THREE.PositionalAudio(listenerAtivo);
+                    audioLoader.load(somEfeitoUrl, function(buffer) {
+                        audioPosicionalEfeito.setBuffer(buffer);
+                        audioPosicionalEfeito.setRefDistance(20);
+                        audioPosicionalEfeito.setVolume(1.8);
+                    });
+                    grupoMestre.add(audioPosicionalEfeito);
+
+                    var audioPosicionalPassos = new THREE.PositionalAudio(listenerAtivo);
+                    audioLoader.load(somPassoUrl, function(buffer) {
+                        audioPosicionalPassos.setBuffer(buffer);
+                        audioPosicionalPassos.setRefDistance(10);
+                        audioPosicionalPassos.setVolume(0.4);
+                    });
+                    grupoMestre.add(audioPosicionalPassos);
+
+                    if (typeof mapModel !== 'undefined' && mapModel) {
+                        mapModel.add(grupoMestre);
+                    } else {
+                        scene.add(grupoMestre);
+                    }
+
+                    objetosVivosData.push({
+                        mestre: grupoMestre,
+                        pivot: pivotBase,
+                        mesh: criaturaMesh,
+                        audioEfeito: audioPosicionalEfeito,
+                        audioPassos: audioPosicionalPassos,
+                        state: 'idle',
+                        timer: Math.random() * 5,
+                        targetX: grupoMestre.position.x,
+                        targetZ: grupoMestre.position.z,
+                        speed: 0.1 + Math.random() * 0.1,
+                        escalaOriginal: escalaBase,
+                        
+                        animTime: Math.random() * 100,
+                        somTimer: 5 + Math.random() * 20,
+                        velY: 0,
+                        isGrounded: true,
+                        jumpTimer: 4 + Math.random() * 15
+                    });
+                    
+                    mostrarNotificacao("✨ Objeto Vivo " + oId + ".glb despertado!", "#00ff00");
+                    
+                }, undefined, function(err) {
+                    mostrarNotificacao("⚠️ Falha ao despertar " + oId + ".glb", "#ff3333");
+                });
+
+            })(x, z, id, url);
+        }
+    }
+}
+
+// ==========================================
+// 3. ENGINE DE INTELIGÊNCIA ARTIFICIAL E FÍSICA
+// ==========================================
+var criaturaRaycaster = new THREE.Raycaster();
+var direcaoAbixo = new THREE.Vector3(0, -1, 0);
+
+function updateObjetosVivos() {
+    if (typeof player === 'undefined' || !player) return;
+
+    objetosVivosData.forEach(function(criatura) {
+        criatura.animTime += 0.05;
+        criatura.timer -= 0.016;
+        criatura.somTimer -= 0.016;
+        criatura.jumpTimer -= 0.016;
+
+        // 1. Efeito Vital de Respiração
+        var pulsar = criatura.escalaOriginal + Math.sin(criatura.animTime * 2) * 0.4;
+        criatura.mesh.scale.set(pulsar, pulsar + (Math.cos(criatura.animTime) * 0.2), pulsar);
+
+        // 2. Emissão de estalos esporádicos 3D
+        if (criatura.somTimer <= 0) {
+            if (criatura.audioEfeito.buffer && !criatura.audioEfeito.isPlaying) {
+                criatura.audioEfeito.play();
+            }
+            criatura.somTimer = 10 + Math.random() * 25;
+        }
+
+        var distAoPlayer = criatura.mestre.position.distanceTo(player.position);
+
+        // 3. Tomada de Decisão (IA)
+        if (distAoPlayer < 45) {
+            criatura.state = 'following';
+            criatura.targetX = player.position.x + (Math.random() - 0.5) * 15;
+            criatura.targetZ = player.position.z + (Math.random() - 0.5) * 15;
+            if (criatura.jumpTimer > 2) criatura.jumpTimer = 2; 
+        } else if (criatura.timer <= 0) {
+            criatura.state = Math.random() > 0.4 ? 'walking' : 'idle';
+            criatura.timer = 5 + Math.random() * 8;
+            if (criatura.state === 'walking') {
+                criatura.targetX = criatura.mestre.position.x + (Math.random() - 0.5) * 80;
+                criatura.targetZ = criatura.mestre.position.z + (Math.random() - 0.5) * 80;
+            }
+        }
+
+        // 4. Sistema de Locomoção (Variável corrigida de forma definitiva!)
+        if (criatura.state === 'walking' || criatura.state === 'following') {
+            var dx = criatura.targetX - criatura.mestre.position.x;
+            var dz = criatura.targetZ - criatura.mestre.position.z;
+            var distanciaAlvo = Math.sqrt(dx * dx + dz * dz);
+
+            if (distanciaAlvo > 4.0) {
+                var anguloOlhar = Math.atan2(dx, dz);
+                criatura.mestre.rotation.y = anguloOlhar;
+
+                var velocidadeAtual = criatura.state === 'following' ? criatura.speed * 1.5 : criatura.speed;
+                criatura.mestre.position.x += Math.sin(anguloOlhar) * velocidadeAtual;
+                criatura.mestre.position.z += Math.cos(anguloOlhar) * velocidadeAtual;
+
+                criatura.mesh.rotation.z = Math.sin(criatura.animTime * 3) * 0.05;
+                criatura.mesh.rotation.x = Math.cos(criatura.animTime * 3) * 0.03;
+
+                if (criatura.isGrounded && Math.floor(criatura.animTime) % 6 === 0) {
+                    if (criatura.audioPassos.buffer && !criatura.audioPassos.isPlaying) {
+                        criatura.audioPassos.play();
+                    }
+                }
+            }
+        } else {
+            criatura.mesh.rotation.z = 0;
+            criatura.mesh.rotation.x = 0;
+        }
+
+        // 5. Execução do Pulo
+        if (criatura.jumpTimer <= 0 && criatura.isGrounded) {
+            criatura.velY = 0.6 + Math.random() * 0.4;
+            criatura.isGrounded = false;
+            criatura.jumpTimer = 8 + Math.random() * 20;
+            
+            if (criatura.audioEfeito.buffer && !criatura.audioEfeito.isPlaying) {
+                criatura.audioEfeito.play();
+            }
+        }
+
+        // 6. Gravidade e Colisão de Solo Nativa
+        if (!criatura.isGrounded) {
+            criatura.pivot.position.y += criatura.velY;
+            criatura.velY -= 0.035; 
+        }
+
+        if (typeof mapModel !== 'undefined' && mapModel) {
+            var checarY = criatura.mestre.position.y + criatura.pivot.position.y + 15;
+            criaturaRaycaster.set(new THREE.Vector3(criatura.mestre.position.x, checarY, criatura.mestre.position.z), direcaoAbixo);
+            var colisoesChao = criaturaRaycaster.intersectObject(mapModel, true);
+
+            if (colisoesChao.length > 0) {
+                var alturaChaoReal = colisoesChao[0].point.y;
+                var alturaAtualObjeto = criatura.mestre.position.y + criatura.pivot.position.y;
+
+                if (alturaAtualObjeto <= alturaChaoReal + 0.1 || colisoesChao[0].distance < 15.1) {
+                    criatura.mestre.position.y = alturaChaoReal;
+                    criatura.pivot.position.y = 0;
+                    criatura.velY = 0;
+                    criatura.isGrounded = true;
+                }
+            } else {
+                if (criatura.mestre.position.y < -150) {
+                    criatura.mestre.position.set((Math.random() - 0.5) * 200, 30, (Math.random() - 0.5) * 200);
+                    criatura.pivot.position.y = 0;
+                    criatura.velY = 0;
+                    criatura.isGrounded = false;
+                }
+            }
+        }
+    });
+}
+
+var oldAnimate = window.animate;
+window.animate = function() {
+    updateObjetosVivos();
+    oldAnimate();
+};
