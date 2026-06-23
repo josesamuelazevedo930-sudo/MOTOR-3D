@@ -1,0 +1,46 @@
+// Configurações do gerador
+const TOTAL_MODELOS = 100;
+const QUANTIDADE_PREDIOS = 50; // Quantos objetos deseja espalhar
+const AREA_GENEROSIDADE = 300; // Tamanho do raio de espalhamento
+
+function gerarCidade() {
+    console.log("Iniciando geração de cidade...");
+    
+    for (let i = 0; i < QUANTIDADE_PREDIOS; i++) {
+        // Escolhe um número de modelo aleatório entre 1 e 100
+        const idModelo = Math.floor(Math.random() * TOTAL_MODELOS) + 1;
+        
+        // Caminho do arquivo informado
+        const urlModelo = `file:///usb/sda1/3djogo/3d3/${idModelo}.glb`;
+        
+        // Gera posições aleatórias no plano XZ (horizontal)
+        const posX = (Math.random() - 0.5) * AREA_GENEROSIDADE;
+        const posZ = (Math.random() - 0.5) * AREA_GENEROSIDADE;
+        const posY = 0; // Ajustado no chão ou modificado conforme o relevo do seu mapa
+
+        // Carrega o modelo usando a instância global do Three.js do seu jogo
+        loaderGLTF.load(urlModelo, (gltf) => {
+            const objeto = gltf.scene;
+            
+            // Posiciona o objeto criado
+            objeto.position.set(posX, posY, posZ);
+            
+            // Rotaciona aleatoriamente para dar variedade à cidade
+            objeto.rotation.y = Math.random() * Math.PI * 2;
+            
+            // Opcional: Escala padrão para os prédios (ajuste se ficarem muito grandes/pequenos)
+            objeto.scale.set(5, 5, 5); 
+            
+            // Adiciona o objeto diretamente na cena ativa do jogo
+            scene.add(objeto);
+        }, 
+        undefined, 
+        (error) => {
+            console.warn(`Não foi possível carregar o modelo ${idModelo}.glb:`, error);
+        });
+    }
+    alert("Cidade gerada com sucesso!");
+}
+
+// Executa a função imediatamente ao rodar o script
+gerarCidade();
