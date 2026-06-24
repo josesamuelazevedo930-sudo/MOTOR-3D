@@ -1,0 +1,49 @@
+// Script: Injetor de Texturas Aleatórias Inteligente
+(function() {
+    if (!scene || !mapModel) {
+        alert("Erro: O mapa ou a cena ainda não foram carregados!");
+        return;
+    }
+
+    const totalTexturas = 100;
+    const caminhoBase = "file:///usb/sda1/3djogo/texture/";
+    const loaderTextura = new THREE.TextureLoader();
+
+    // Forçar a ativação do crossOrigin para tentar mitigar bloqueios locais se o webview permitir
+    loaderTextura.crossOrigin = "anonymous";
+
+    console.log("Iniciando mapeamento inteligente de texturas...");
+
+    // Percorre todos os objetos do mapa para encontrar superfícies válidas (Meshes)
+    mapModel.traverse((child) => {
+        if (child.isMesh && child.material) {
+            
+            // Sorteia um número de 1 a 100
+            const numeroAleatorio = Math.floor(Math.random() * totalTexturas) + 1;
+            const urlTextura = caminhoBase + numeroAleatorio + ".jpg";
+
+            // Carrega a textura localmente
+            loaderTextura.load(urlTextura, (texture) => {
+                // Configurações inteligentes de repetição para não esticar o visual
+                texture.wrapS = THREE.RepeatWrapping;
+                texture.wrapT = THREE.RepeatWrapping;
+                texture.repeat.set(2, 2); 
+
+                // Aplica a nova textura mantendo as propriedades do material original
+                if (Array.isArray(child.material)) {
+                    child.material.forEach((mat) => {
+                        mat.map = texture;
+                        mat.needsUpdate = true;
+                    });
+                } else {
+                    child.material.map = texture;
+                    child.material.needsUpdate = true;
+                }
+            }, undefined, (err) => {
+                console.warn("Não foi possível carregar a textura: " + urlTextura + " (Verifique as permissões do protocolo file:// no seu navegador/app)");
+            });
+        }
+    });
+
+    alert("Processo de texturização aleatória finalizado!");
+})();
