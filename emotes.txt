@@ -1,0 +1,127 @@
+// === SCRIPT DE EMOTES PARA O MOTOR 3D ===
+(function() {
+    // 1. Criar o painel visual dos emotes
+    const emotePanel = document.createElement('div');
+    emotePanel.id = 'emote-panel';
+    emotePanel.className = 'panel'; // Reutiliza seus estilos de painel
+    emotePanel.style.display = 'none';
+    emotePanel.style.top = '185px';
+    emotePanel.style.left = '20px'; // Posicionado no lado esquerdo para não cobrir os outros
+    emotePanel.style.right = 'auto';
+    
+    emotePanel.innerHTML = `
+        <p style="font-size:12px; margin-top:0; color:#fff; font-weight:bold;">🎭 EMOTES DISPONÍVEIS:</p>
+        <div id="emote-buttons-container"></div>
+    `;
+    document.body.appendChild(emotePanel);
+
+    // 2. Criar o botão principal na UI para abrir o painel de emotes
+    const emoteBtn = document.createElement('button');
+    emoteBtn.id = 'emote-ui-btn';
+    emoteBtn.className = 'ui-btn';
+    emoteBtn.innerText = '🎭 EMOTES';
+    emoteBtn.style.left = '20px';
+    emoteBtn.style.right = 'auto';
+    emoteBtn.style.top = '20px';
+    emoteBtn.style.background = '#purple';
+    emoteBtn.style.backgroundColor = '#8a2be2';
+    
+    emoteBtn.onclick = () => {
+        const vis = emotePanel.style.display === 'block';
+        // Fecha outros painéis se quiser, ou só alterna este
+        emotePanel.style.display = vis ? 'none' : 'block';
+        if (!vis) updateEmoteList();
+    };
+    document.body.appendChild(emoteBtn);
+
+    // 3. Função para tocar o emote e depois voltar ao estado Idle
+    window.playEmote = function(animationName) {
+        if (!mixer || !player) return;
+        
+        // Encontra a animação por nome
+        const clip = player.animations ? player.animations.find(a => a.name === animationName) : null;
+        // Se não achar no player, tenta buscar no escopo global do loader se guardado
+        const targetClip = clip || THREE.AnimationClip.findByName(THREE.AnimationClip.CreateFromMorphTargetSequence, animationName); 
+        
+        if (!targetClip) return;
+
+        const emoteAction = mixer.clipAction(targetClip);
+        
+        if (activeAction) {
+            activeAction.fadeOut(0.15);
+        }
+
+        emoteAction.reset();
+        emoteAction.setLoop(THREE.LoopOnce); // Toca apenas uma vez
+        emoteAction.clampWhenFinished = false; // Não trava no último frame
+        emoteAction.fadeIn(0.15);
+        emoteAction.play();
+
+        // Quando o emote terminar, volta para a animação anterior (idle/walk)
+        mixer.addEventListener('finished', function onEmoteEnd(e) {
+            if (e.action === emoteAction) {
+                mixer.removeEventListener('finished', onEmoteEnd);
+                emoteAction.fadeOut(0.15);
+                if (activeAction) {
+                    activeAction.reset().fadeIn(0.15).play();
+                }
+            }
+        });
+    };
+
+    // 4. Atualizar a lista de botões com base nas animações do modelo carregado
+    function updateEmoteList() {
+        const container = document.getElementById('emote-buttons-container');
+        container.innerHTML = "";
+
+        // Se o player atual não tiver animações registradas diretamente, tenta pegar do objeto carregado
+        // Para garantir compatibilidade com o seu setup:
+        if (!player) {
+            container.innerHTML = "<p style='font-size:10px; color:#aaa;'>Nenhum personagem ativo.</p>";
+            return;
+        }
+
+        // Procurar clipes de animação disponíveis
+        let clips = [];
+        if (player.animations) clips = player.animations;
+        else if (player.parent && player.parent.animations) clips = player.parent.animations;
+        
+        // Fallback: Se for o modelo de Robô Padrão da Three.js, ele geralmente expõe na cena global, 
+        // mas se os clips sumirem na clonagem, listamos os nomes conhecidos dele:
+        if (clips.length === 0) {
+            // Lista customizada de segurança para modelos comuns
+            clips = [{name: 'Punch'}, {name: 'Wave'}, {name: 'ThumbsUp'}, {name: 'Jump'}, {name: 'Death'}];
+        }
+
+        clips.forEach(clip => {
+            // Ignora animações de locomoção padrão para não duplicar no painel de emotes
+            if (clip.name.toLowerCase().match(/idle|static|run|walk|move/)) return;
+
+            let b = document.createElement('button');
+            b.className = 'opt';
+            b.style.background = '#443366';
+            b.innerText = "✨ " + clip.name;
+            b.onclick = () => {
+                // Tenta tocar usando o nome
+                if(player.animations && player.animations.find(a => a.name === clip.name)) {
+                    playEmote(clip.name);
+                } else {
+                    // Fallback direto via Mixer se as animações estiverem guardadas de outra forma
+                    const nativeClip = THREE.AnimationClip.findByName(THREE.AnimationClip.CreateFromMorphTargetSequence || [], clip.name);
+                    if(nativeClip) playEmote(clip.name);
+                    else {
+                        // Força via Mixer procurando no cache interno do Three.js
+                        try {
+                            let action = mixer.clipAction(clip.name);
+                            if(action) {
+                                if(activeAction) activeAction.fadeOut(0.2);
+                                action.reset().setLoop(THREE.LoopOnce).play();
+                            }
+                        } catch(e) { console.log("Animação não suportada neste modelo."); }
+                    }
+                }
+            };
+            container.appendChild(b);
+        });
+    }
+})();
