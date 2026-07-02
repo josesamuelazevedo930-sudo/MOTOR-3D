@@ -1,0 +1,35 @@
+// Script: Céu Piscante RGB
+(function() {
+    // Array com as cores solicitadas em formato hexadecimal
+    const cores = [
+        0x00FF00, // Verde
+        0x0000FF, // Azul
+        0xFFFF00, // Amarelo
+        0xFF0000, // Vermelho
+        0xFF00FF, // Rosa
+        0xFFFFFF, // Branco
+        0x000000, // Preto
+        0x800080, // Roxo
+        0xFFA500, // Laranja
+        0xFF0000, // Red
+        0x00FF00, // Green
+        0x0000FF  // Blue
+    ];
+
+    let indiceCor = 0;
+    
+    // Remove qualquer intervalo anterior para não acumular se rodar o script duas vezes
+    if (window.meuIntervaloRGB) {
+        clearInterval(window.meuIntervaloRGB);
+    }
+
+    // Altera a cor do céu a cada 200 milissegundos (ajuste se quiser mais rápido ou devagar)
+    window.meuIntervaloRGB = setInterval(() => {
+        if (typeof scene !== 'undefined' && scene.background) {
+            scene.background.setHex(cores[indiceCor]);
+            indiceCor = (indiceCor + 1) % cores.length;
+        }
+    }, 200);
+
+    console.log("Script RGB ativado com sucesso, querido!");
+})();
