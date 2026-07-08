@@ -1,0 +1,167 @@
+(function() {
+    // 1. Validar se o jogo já foi inicializado
+    if (!window.scene || !window.player) {
+        alert("Erro: O motor principal do jogo precisa estar carregado primeiro!");
+        return;
+    }
+
+    // 2. Configurações e Variáveis do Player 2
+    window.player2 = null;
+    window.mixer2 = null;
+    window.activeAction2 = null;
+    window.idleAction2 = null;
+    window.walkAction2 = null;
+    window.velY2 = 0;
+    window.grounded2 = false;
+    window.camRot2 = 0;
+    window.camDist2 = 40;
+
+    // Criar uma segunda câmera para o Player 2
+    window.camera2 = new THREE.PerspectiveCamera(60, (window.innerWidth / 2) / window.innerHeight, 0.1, 4000);
+
+    // 3. Clonar ou carregar o modelo para o Player 2
+    // Usamos o mesmo link do Soldado padrão para garantir o carregamento seguro
+    const player2ModelUrl = "https://threejs.org/examples/models/gltf/Soldier.glb";
+    
+    window.loaderGLTF.load(player2ModelUrl, (gltf) => {
+        window.player2 = gltf.scene;
+        window.player2.position.set(20, 15, 0); // Nasce um pouco ao lado do Player 1
+        
+        let box = new THREE.Box3().setFromObject(window.player2);
+        let s = 8 / (box.getSize(new THREE.Vector3()).y || 1);
+        window.player2.scale.set(s, s, s);
+        window.scene.add(window.player2);
+        
+        window.mixer2 = new THREE.AnimationMixer(window.player2);
+        if(gltf.animations.length > 0) {
+            window.idleAction2 = window.mixer2.clipAction(gltf.animations.find(a => a.name.toLowerCase().match(/idle|static/)) || gltf.animations[0]);
+            window.walkAction2 = window.mixer2.clipAction(gltf.animations.find(a => a.name.toLowerCase().match(/run|walk|move/)) || gltf.animations[gltf.animations.length-1]);
+            window.activeAction2 = window.idleAction2; 
+            window.activeAction2.play();
+        }
+        console.log("Player 2 carregado com sucesso!");
+    }, undefined, (e) => alert("Erro ao carregar modelo do Player 2"));
+
+    // 4. Mapeamento de Transição de Animação do Player 2
+    function fadeToAction2(type) {
+        let next = (type === 'walk') ? window.walkAction2 : window.idleAction2;
+        if (window.activeAction2 && next && window.activeAction2 !== next) {
+            window.activeAction2.fadeOut(0.2);
+            next.reset().fadeIn(0.2).play();
+            window.activeAction2 = next;
+        }
+    }
+
+    // 5. Sobrescrever a função animate() original para suportar Split-Screen e os novos controles
+    window.animate = function() {
+        requestAnimationFrame(window.animate);
+        let d = window.clock.getDelta();
+        
+        // Atualiza os mixers de animação
+        if(window.mixer) window.mixer.update(d);
+        if(window.mixer2) window.mixer2.update(d);
+
+        // --- LÓGICA DO PLAYER 1 ---
+        if(window.player && window.mapModel) {
+            if(window.keys['ArrowLeft']) window.camRot += 0.05;
+            if(window.keys['ArrowRight']) window.camRot -= 0.05;
+            let f = new THREE.Vector3(Math.sin(window.camRot), 0, Math.cos(window.camRot));
+            let r = new THREE.Vector3().crossVectors(new THREE.Vector3(0,1,0), f);
+            let mx = 0, mz = 0;
+            if(window.keys['KeyW']) mz = -1; if(window.keys['KeyS']) mz = 1;  
+            if(window.keys['KeyA']) mx = -1; if(window.keys['KeyD']) mx = 1;  
+
+            if(mx !== 0 || mz !== 0) {
+                window.player.position.addScaledVector(f, mz * window.moveSpeed);
+                window.player.position.addScaledVector(r, mx * window.moveSpeed);
+                let rotBase = Math.atan2(-mx, -mz) + window.camRot;
+                window.player.rotation.y = window.animInverted ? rotBase + Math.PI : rotBase;
+                fadeToAction('walk');
+            } else { fadeToAction('idle'); }
+
+            if(!window.fly) {
+                window.player.position.y += window.velY;
+                window.velY -= 0.035;
+                window.raycaster.set(new THREE.Vector3(window.player.position.x, window.player.position.y + 10, window.player.position.z), new THREE.Vector3(0, -1, 0));
+                let hits = window.raycaster.intersectObject(window.mapModel, true);
+                if(hits.length > 0 && hits[0].distance < 10.2 && window.velY <= 0) {
+                    window.player.position.y = hits[0].point.y;
+                    window.velY = 0; window.grounded = true;
+                } else { window.grounded = false; }
+            } else { window.player.position.y += window.velY; window.velY *= 0.9; }
+
+            if(window.player.position.y < -200) window.respawn();
+            
+            // Posiciona Câmera 1 (Lado Esquerdo)
+            window.camera.position.set(window.player.position.x + Math.sin(window.camRot)*window.camDist, window.player.position.y + window.camDist*0.6, window.player.position.z + Math.cos(window.camRot)*window.camDist);
+            window.camera.lookAt(window.player.position.x, window.player.position.y + 5, window.player.position.z);
+        }
+
+        // --- LÓGICA DO PLAYER 2 (Controles: I, J, K, L) ---
+        if(window.player2 && window.mapModel) {
+            // Rotação da câmera baseada nas teclas de seta ou fixa com o Player 1
+            let f2 = new THREE.Vector3(Math.sin(window.camRot2), 0, Math.cos(window.camRot2));
+            let r2 = new THREE.Vector3().crossVectors(new THREE.Vector3(0,1,0), f2);
+            let mx2 = 0, mz2 = 0;
+            
+            if(window.keys['KeyI']) mz2 = -1; // Frente
+            if(window.keys['KeyK']) mz2 = 1;  // Trás
+            if(window.keys['KeyJ']) mx2 = -1; // Esquerda
+            if(window.keys['KeyL']) mx2 = 1;  // Direita
+
+            if(mx2 !== 0 || mz2 !== 0) {
+                window.player2.position.addScaledVector(f2, mz2 * window.moveSpeed);
+                window.player2.position.addScaledVector(r2, mx2 * window.moveSpeed);
+                let rotBase2 = Math.atan2(-mx2, -mz2) + window.camRot2;
+                window.player2.rotation.y = window.animInverted ? rotBase2 + Math.PI : rotBase2;
+                fadeToAction2('walk');
+            } else { fadeToAction2('idle'); }
+
+            // Gravidade e Colisão do Player 2
+            window.player2.position.y += window.velY2;
+            window.velY2 -= 0.035;
+            window.raycaster.set(new THREE.Vector3(window.player2.position.x, window.player2.position.y + 10, window.player2.position.z), new THREE.Vector3(0, -1, 0));
+            let hits2 = window.raycaster.intersectObject(window.mapModel, true);
+            if(hits2.length > 0 && hits2[0].distance < 10.2 && window.velY2 <= 0) {
+                window.player2.position.y = hits2[0].point.y;
+                window.velY2 = 0; window.grounded2 = true;
+            } else { window.grounded2 = false; }
+
+            if(window.player2.position.y < -200) { window.player2.position.set(20, 15, 0); window.velY2 = 0; }
+
+            // Posiciona Câmera 2 (Lado Direito)
+            window.camera2.position.set(window.player2.position.x + Math.sin(window.camRot2)*window.camDist2, window.player2.position.y + window.camDist2*0.6, window.player2.position.z + Math.cos(window.camRot2)*window.camDist2);
+            window.camera2.lookAt(window.player2.position.x, window.player2.position.y + 5, window.player2.position.z);
+        }
+
+        // --- RENDERIZAÇÃO EM TELA DIVIDIDA (SPLIT-SCREEN) ---
+        let w = window.innerWidth;
+        let h = window.innerHeight;
+
+        // Força o Scissor Test no WebGLRenderer
+        window.renderer.setScissorTest(true);
+
+        // Lado Esquerdo: Player 1
+        window.renderer.setViewport(0, 0, w / 2, h);
+        window.renderer.setScissor(0, 0, w / 2, h);
+        window.camera.aspect = (w / 2) / h;
+        window.camera.updateProjectionMatrix();
+        window.renderer.render(window.scene, window.camera);
+
+        // Lado Direito: Player 2
+        window.renderer.setViewport(w / 2, 0, w / 2, h);
+        window.renderer.setScissor(w / 2, 0, w / 2, h);
+        window.camera2.aspect = (w / 2) / h;
+        window.camera2.updateProjectionMatrix();
+        window.renderer.render(window.scene, window.camera2);
+    };
+
+    // Ajustar proporção se a janela mudar de tamanho
+    window.addEventListener('resize', () => {
+        let w = window.innerWidth;
+        let h = window.innerHeight;
+        window.renderer.setSize(w, h);
+    });
+
+    alert("Modo 2 Jogadores (Split-Screen) Ativado!");
+})();
