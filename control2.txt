@@ -1,0 +1,60 @@
+// Remove qualquer painel anterior se o script for reexecutado
+const oldPanel = document.getElementById('remote-panel');
+if(oldPanel) oldPanel.remove();
+
+// Injeta a biblioteca PeerJS dinamicamente no jogo
+const peerScript = document.createElement('script');
+peerScript.src = "https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js";
+document.head.appendChild(peerScript);
+
+peerScript.onload = () => {
+    // Gera exatamente 4 dígitos numéricos aleatórios
+    const pin = Math.floor(1000 + Math.random() * 9000).toString();
+    const peerId = "PEDRA-" + pin;
+    
+    // Cria o painel visual flutuante no jogo
+    const infoDiv = document.createElement('div');
+    infoDiv.id = 'remote-panel';
+    infoDiv.style = "position:absolute; top:20px; left:20px; background:rgba(0,0,0,0.9); color:#00ff88; padding:15px; border-radius:10px; z-index:99999; font-family:monospace; border:2px solid #00ff88; box-shadow: 0 4px 15px rgba(0,255,136,0.3); text-align:center;";
+    infoDiv.innerHTML = `<div style='font-weight:bold;margin-bottom:5px;'>CONTROLE REMOTO</div><div style='font-size:24px;color:#fff;font-weight:900;letter-spacing:2px;'>${pin}</div><div style='font-size:9px;color:#aaa;margin-top:5px;'>Aguardando conexão...</div>`;
+    document.body.appendChild(infoDiv);
+
+    const peer = new Peer(peerId);
+
+    peer.on('connection', (conn) => {
+        infoDiv.innerHTML = `<div style='font-weight:bold;color:#00ffff;'>CONTROLADOR</div><div style='font-size:22px;color:#fff;font-weight:900;'>CONECTADO</div><div style='font-size:9px;color:#00ffff;margin-top:5px;'>PIN: ${pin}</div>`;
+        infoDiv.style.borderColor = "#00ffff";
+        infoDiv.style.boxShadow = "0 4px 15px rgba(0,255,255,0.3)";
+        
+        // Escuta os comandos vindos do site do controle
+        conn.on('data', (data) => {
+            if (data.type === 'move') {
+                // Injeta diretamente o estado na memória global do jogo
+                window.keys['KeyW'] = data.y < -0.2;
+                window.keys['KeyS'] = data.y > 0.2;
+                window.keys['KeyA'] = data.x < -0.2;
+                window.keys['KeyD'] = data.x > 0.2;
+            }
+            if (data.type === 'camera') {
+                if (Math.abs(data.x) > 0.05) {
+                    // Altera diretamente a variável camRot do escopo do jogo
+                    window.camRot -= data.x * 0.06;
+                }
+            }
+            if (data.type === 'action' && data.button === 'jump') {
+                if (typeof window.jump === 'function') window.jump();
+            }
+        });
+        
+        conn.on('close', () => {
+            infoDiv.innerHTML = `<div style='font-weight:bold;color:#ff3333;'>CONTROLE</div><div style='font-size:22px;color:#fff;font-weight:900;'>DESCONECTADO</div>`;
+            infoDiv.style.borderColor = "#ff3333";
+            setTimeout(() => window.location.reload(), 2000); // Recarrega se cair
+        });
+    });
+
+    peer.on('error', (err) => {
+        console.error("Erro no PeerJS:", err);
+        infoDiv.innerHTML = "<div style='color:red;'>Erro de Conexão.<br>Tentando criar novo PIN...</div>";
+    });
+};
