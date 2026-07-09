@@ -1,0 +1,51 @@
+// Injeta a biblioteca PeerJS dinamicamente no jogo
+const script = document.createElement('script');
+script.src = "https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js";
+document.head.appendChild(script);
+
+script.onload = () => {
+    // Cria um ID de conexão aleatório e simples
+    const connectionId = "MUNDO-PEDRAS-" + Math.floor(1000 + Math.random() * 9000);
+    
+    // Cria um elemento visual na tela do jogo para mostrar o código
+    const infoDiv = document.createElement('div');
+    infoDiv.style = "position:absolute; top:50px; left:20px; background:rgba(0,0,0,0.8); color:#0f0; padding:15px; border-radius:8px; z-index:9999; font-family:monospace; border:1px solid #0f0;";
+    infoDiv.innerHTML = `<div><strong>CONTROLE REMOTO ATIVO</strong></div><div style='margin-top:5px;'>ID de Conexão: <span style='color:#fff; font-size:16px;'>${connectionId}</span></div>`;
+    document.body.appendChild(infoDiv);
+
+    const peer = new Peer(connectionId);
+
+    peer.on('open', () => {
+        console.log('Aguardando conexão do controle no ID: ' + connectionId);
+    });
+
+    peer.on('connection', (conn) => {
+        infoDiv.innerHTML = "<div><strong style='color:#00ff88;'>CONTROLADOR CONECTADO!</strong></div>";
+        infoDiv.style.borderColor = "#00ff88";
+        
+        // Recebe os dados de input do site controlador
+        conn.on('data', (data) => {
+            if (data.type === 'move') {
+                // Simula o pressionamento de teclas baseado no joystick esquerdo
+                keys['KeyW'] = data.y < -0.3;
+                keys['KeyS'] = data.y > 0.3;
+                keys['KeyA'] = data.x < -0.3;
+                keys['KeyD'] = data.x > 0.3;
+            }
+            if (data.type === 'camera') {
+                // Controla a rotação da câmera baseado no joystick direito
+                if (Math.abs(data.x) > 0.1) {
+                    camRot -= data.x * 0.05;
+                }
+            }
+            if (data.type === 'action') {
+                if (data.button === 'jump') jump();
+            }
+        });
+        
+        conn.on('close', () => {
+            infoDiv.innerHTML = "<div><strong style='color:#ff3333;'>CONTROLADOR DESCONECTADO</strong></div>";
+            infoDiv.style.borderColor = "#ff3333";
+        });
+    });
+};
