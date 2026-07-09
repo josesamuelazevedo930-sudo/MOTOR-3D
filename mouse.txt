@@ -1,0 +1,112 @@
+// Sistema de Mouse 3D para o Mundo das Pedras Pro
+(function() {
+    // Verificar se a cena e o motor estão prontos
+    if (!window.scene || !window.player) {
+        alert("Erro: O motor 3D precisa estar completamente carregado primeiro!");
+        return;
+    }
+
+    // Se já existir um mouse 3D na tela, remove o antigo para não duplicar
+    if (window.mouse3DMesh) {
+        window.scene.remove(window.mouse3DMesh);
+    }
+
+    // 1. Criando o indicador visual do Mouse 3D (Um cone vermelho apontando para baixo)
+    const pointerGeo = new THREE.ConeGeometry(2, 6, 4);
+    const pointerMat = new THREE.MeshBasicMaterial({ color: 0xff0000, wireframe: false });
+    window.mouse3DMesh = new THREE.Mesh(pointerGeo, pointerMat);
+    
+    // Inverte o cone para ele apontar para o chão
+    window.mouse3DMesh.rotation.x = Math.PI; 
+
+    // Posiciona o mouse inicialmente um pouco à frente do jogador
+    window.mouse3DMesh.position.set(
+        window.player.position.x,
+        window.player.position.y + 10,
+        window.player.position.z - 20
+    );
+    
+    window.scene.add(window.mouse3DMesh);
+
+    // Velocidade do movimento do mouse
+    const mouseSpeed = 1.2;
+
+    // Objeto para monitorar o estado das teclas customizadas
+    const customKeys = {
+        KeyI: false, // Cima
+        KeyK: false, // Baixo
+        KeyJ: false, // Esquerda
+        KeyL: false, // Direita
+        KeyO: false  // Enter / Ação
+    };
+
+    // 2. Capturando o pressionamento das teclas
+    window.addEventListener('keydown', (e) => {
+        if (e.code in customKeys) {
+            customKeys[e.code] = true;
+            
+            // Evento do clique (Tecla O)
+            if (e.code === 'KeyO') {
+                executarClique3D();
+            }
+        }
+    });
+
+    window.addEventListener('keyup', (e) => {
+        if (e.code in customKeys) {
+            customKeys[e.code] = false;
+        }
+    });
+
+    // 3. Função que simula o "Enter" na posição do mouse 3D
+    function executarClique3D() {
+        // Efeito visual rápido para mostrar o clique
+        window.mouse3DMesh.material.color.setHex(0x00ff00); // Fica verde
+        setTimeout(() => {
+            if(window.mouse3DMesh) window.mouse3DMesh.material.color.setHex(0xff0000); // Volta a ser vermelho
+        }, 150);
+
+        // Criar um efeito de partículas ou ação na posição atual do mouse
+        console.log("Mouse 3D Clicou na posição:", window.mouse3DMesh.position);
+        
+        // Exemplo de ação: Spawna um bloquinho de pedra onde o mouse clicou
+        const blockGeo = new THREE.BoxGeometry(4, 4, 4);
+        const blockMat = new THREE.MeshBasicMaterial({ color: 0x888888 });
+        const block = new THREE.Mesh(blockGeo, blockMat);
+        block.position.copy(window.mouse3DMesh.position);
+        block.position.y -= 3; // Ajusta para criar logo abaixo do indicador
+        window.scene.add(block);
+        
+        // Se o seu mapa procedural aceitar colisões, adiciona o bloco nele
+        if(window.mapModel) {
+            window.mapModel.add(block);
+        }
+    }
+
+    // 4. Injetar a atualização de movimento no loop principal do jogo
+    if (!window.isMouseLoopInjected) {
+        window.isMouseLoopInjected = true;
+        
+        const originalAnimate = window.animate;
+        
+        window.animate = function() {
+            originalAnimate(); // Mantém o funcionamento original do jogo
+            
+            if (window.mouse3DMesh) {
+                // Movimento Vertical (I = Cima, K = Baixo)
+                if (customKeys['KeyI']) window.mouse3DMesh.position.y += mouseSpeed;
+                if (customKeys['KeyK']) window.mouse3DMesh.position.y -= mouseSpeed;
+                
+                // Movimento Horizontal (J = Esquerda, L = Direita)
+                // Baseado na orientação da câmera para fazer sentido ao olhar
+                if (customKeys['KeyJ']) window.mouse3DMesh.position.x -= mouseSpeed;
+                if (customKeys['KeyL']) window.mouse3DMesh.position.x += mouseSpeed;
+
+                // Animação sutil de rotação do ponteiro para dar efeito dinâmico
+                window.mouse3DMesh.rotation.y += 0.05;
+            }
+        };
+    }
+
+    console.log("Script de Mouse 3D injetado! Use I, K, J, L para mover e O para interagir/colocar blocos.");
+})();
