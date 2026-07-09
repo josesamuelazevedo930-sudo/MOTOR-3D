@@ -1,0 +1,87 @@
+(function() {
+    // 1. Criar o botão de abrir/fechar o Menu USB
+    const usbBtn = document.createElement('button');
+    usbBtn.innerText = "📦 MINHAS SKINS USB";
+    usbBtn.style.position = 'absolute';
+    usbBtn.style.left = '20px';
+    usbBtn.style.top = '20px';
+    usbBtn.style.width = '160px';
+    usbBtn.style.padding = '12px';
+    usbBtn.style.background = '#e67e22';
+    usbBtn.style.color = 'white';
+    usbBtn.style.border = 'none';
+    usbBtn.style.fontWeight = 'bold';
+    usbBtn.style.borderRadius = '8px';
+    usbBtn.style.zIndex = '1001';
+    usbBtn.style.boxShadow = '0 4px #000';
+    usbBtn.style.cursor = 'pointer';
+    document.body.appendChild(usbBtn);
+
+    // 2. Criar o Painel Rolável das Skins
+    const usbPanel = document.createElement('div');
+    usbPanel.style.position = 'absolute';
+    usbPanel.style.left = '20px';
+    usbPanel.style.top = '75px';
+    usbPanel.style.width = '200px';
+    usbPanel.style.maxHeight = '60vh';
+    usbPanel.style.background = 'rgba(0,0,0,0.95)';
+    usbPanel.style.borderRadius = '12px';
+    usbPanel.style.padding = '15px';
+    usbPanel.style.color = 'white';
+    usbPanel.style.border = '1px solid #444';
+    usbPanel.style.zIndex = '1000';
+    usbPanel.style.overflowY = 'auto';
+    usbPanel.style.display = 'none';
+    document.body.appendChild(usbPanel);
+
+    // Alternar visibilidade
+    usbBtn.onclick = () => {
+        usbPanel.style.display = usbPanel.style.display === 'none' ? 'block' : 'none';
+    };
+
+    // Título do painel
+    const title = document.createElement('p');
+    title.innerText = "SELECIONE (1 ATÉ 100):";
+    title.style.fontSize = '12px';
+    title.style.margin = '0 0 10px 0';
+    title.style.fontWeight = 'bold';
+    title.style.color = '#ffaa00';
+    usbPanel.appendChild(title);
+
+    // 3. Gerar a lista de 1 a 100
+    const basePath = "file:///usb/sda1/3djogo/skins/";
+
+    for (let i = 1; i <= 100; i++) {
+        const btnSkin = document.createElement('button');
+        btnSkin.innerText = `Skin #${i}`;
+        btnSkin.style.width = '100%';
+        btnSkin.style.padding = '10px';
+        btnSkin.style.margin = '4px 0';
+        btnSkin.style.border = 'none';
+        btnSkin.style.background = '#333';
+        btnSkin.style.color = 'white';
+        btnSkin.style.borderRadius = '6px';
+        btnSkin.style.textAlign = 'left';
+        btnSkin.style.fontSize = '12px';
+        btnSkin.style.fontWeight = 'bold';
+        btnSkin.style.cursor = 'pointer';
+
+        // Efeito de clique para carregar a skin
+        btnSkin.onclick = () => {
+            const skinUrl = `${basePath}${i}.glb`;
+            console.log(`Tentando forçar carregamento de: ${skinUrl}`);
+            
+            if (typeof loadModel === 'function') {
+                document.getElementById('loader').style.display = 'block';
+                document.getElementById('loader').innerText = `CARREGANDO SKIN ${i}...`;
+                
+                // Força o Three.js a buscar o arquivo no caminho do USB
+                loadModel(skinUrl);
+            } else {
+                alert("Erro: A função do motor 'loadModel' não foi encontrada.");
+            }
+        };
+
+        usbPanel.appendChild(btnSkin);
+    }
+})();
