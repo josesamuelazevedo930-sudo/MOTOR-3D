@@ -1,107 +1,145 @@
+// --- SISTEMA DE NPCs COM VIDA PRÓPRIA ---
 (function() {
-    // 1. Configurações do NPC
-    const modelURL = "https://cdn.jsdelivr.net/gh/josesamuelazevedo930-sudo/MOTOR-3D@main/soldado.glb"; // Ajuste o nome se necessário
-    let npc, npcMixer, npcIdle, npcWalk;
-    let targetPos = new THREE.Vector3();
-    let moveSpeed = 0.3;
-    let isMoving = false;
+    const npcUrl = "https://threejs.org/examples/models/gltf/Soldier.glb"; // Pode mudar para qualquer .glb
+    const npcs = [];
+    const npcCount = 3;
 
-    // 2. Sistema de Mensagens (Chat Roblox)
-    const chatBubble = document.createElement('div');
-    chatBubble.style = "position:absolute; background:white; color:black; padding:5px 10px; border-radius:10px; border:2px solid #000; font-family:sans-serif; font-weight:bold; font-size:12px; display:none; pointer-events:none; white-space:nowrap; z-index:10000;";
-    document.body.appendChild(chatBubble);
+    // Elemento HTML pai para as barras de vida
+    const uiContainer = document.createElement('div');
+    uiContainer.id = 'npc-ui-container';
+    uiContainer.style.position = 'absolute';
+    uiContainer.style.top = '0';
+    uiContainer.style.left = '0';
+    uiContainer.style.width = '100%';
+    uiContainer.style.height = '100%';
+    uiContainer.style.pointerEvents = 'none'; // Não atrapalha os cliques no jogo
+    uiContainer.style.zIndex = '99';
+    document.body.appendChild(uiContainer);
 
-    const frases = ["Patrulhando o Siri Cascudo!", "Avante soldados!", "Nada suspeito por aqui...", "Alguém viu o Bob Esponja?", "Sentido!"];
+    // Função para criar a barra de vida flutuante no HTML
+    function createLifeBar() {
+        const barContainer = document.createElement('div');
+        barContainer.style.position = 'absolute';
+        barContainer.style.width = '60px';
+        barContainer.style.height = '8px';
+        barContainer.style.background = '#333';
+        barContainer.style.border = '1px solid #fff';
+        barContainer.style.borderRadius = '4px';
+        barContainer.style.display = 'none';
 
-    // 3. Indicador de Posição (Seta/Marcador)
-    const indicator = document.createElement('div');
-    indicator.style = "position:absolute; width:10px; height:10px; background:red; border-radius:50%; border:2px solid white; z-index:9999;";
-    document.body.appendChild(indicator);
+        const barFill = document.createElement('div');
+        barFill.style.width = '100%';
+        barFill.style.height = '100%';
+        barFill.style.background = '#00ff00';
+        barFill.style.borderRadius = '3px';
 
-    // 4. Carregar o Modelo
-    loaderGLTF.load(modelURL, (gltf) => {
-        npc = gltf.scene;
-        npc.scale.set(8, 8, 8);
-        npc.position.set(20, 10, 20); // Posição inicial
-        scene.add(npc);
+        barContainer.appendChild(barFill);
+        uiContainer.appendChild(barContainer);
 
-        npcMixer = new THREE.AnimationMixer(npc);
-        if (gltf.animations.length > 0) {
-            npcIdle = npcMixer.clipAction(gltf.animations[0]);
-            npcWalk = npcMixer.clipAction(gltf.animations[1] || gltf.animations[0]);
-            npcIdle.play();
-        }
+        return { container: barContainer, fill: barFill };
+    }
 
-        iniciarIA();
-    });
-
-    function iniciarIA() {
-        setInterval(() => {
-            if (!isMoving) {
-                // Define um novo destino aleatório perto de onde ele está
-                targetPos.set(npc.position.x + (Math.random() * 60 - 30), npc.position.y, npc.position.z + (Math.random() * 60 - 30));
-                isMoving = true;
-                if (npcWalk) { npcIdle.stop(); npcWalk.play(); }
-            }
+    // Carregar os NPCs usando o loader original do seu motor
+    for (let i = 0; i < npcCount; i++) {
+        loaderGLTF.load(npcUrl, (gltf) => {
+            const npcMesh = gltf.scene.clone(); // Clona para criar cópias independentes
             
-            // Chance de falar algo
-            if (Math.random() > 0.7) mostrarMensagem();
-        }, 5000);
+            // Posiciona os NPCs espalhados pelo mapa
+            let posX = (Math.random() - 0.5) * 300 + 50;
+            let posZ = (Math.random() - 0.5) * 300 + 50;
+            npcMesh.position.set(posX, 0, posZ);
+
+            // Ajusta a escala baseado no tamanho do soldado
+            npcMesh.scale.set(7, 7, 7);
+            scene.add(npcMesh);
+
+            // Configura as animações individuais do NPC
+            let npcMixer = new THREE.AnimationMixer(npcMesh);
+            let walk = npcMixer.clipAction(gltf.animations.find(a => a.name.toLowerCase().match(/run|walk|move/)) || gltf.animations[0]);
+            walk.play();
+
+            // Dados lógicos de "vida própria" do NPC
+            const npcData = {
+                mesh: npcMesh,
+                mixer: npcMixer,
+                health: 100,
+                maxHealth: 100,
+                ui: createLifeBar(),
+                targetPos: new THREE.Vector3(posX, 0, posZ),
+                speed: 0.3 + Math.random() * 0.3,
+                changeTargetTimer: 0
+            };
+
+            npcs.push(npcData);
+            console.log(`NPC ${i+1} vivo no mapa!`);
+        });
     }
 
-    function mostrarMensagem() {
-        chatBubble.innerText = frases[Math.floor(Math.random() * frases.length)];
-        chatBubble.style.display = "block";
-        setTimeout(() => { chatBubble.style.display = "none"; }, 3000);
-    }
+    // Intercepta o laço de animação principal do seu jogo
+    const originalAnimate = window.animate;
+    const tempV3 = new THREE.Vector3();
 
-    // 5. Loop de Inteligência e Física
-    const raycaster = new THREE.Raycaster();
-    const downVec = new THREE.Vector3(0, -1, 0);
-
-    const oldAnimate = window.animate;
     window.animate = function() {
-        if (npc) {
-            // A. Gravidade e Chão Inteligente
-            raycaster.set(new THREE.Vector3(npc.position.x, npc.position.y + 10, npc.position.z), downVec);
-            const groundHits = raycaster.intersectObject(mapModel, true);
-            if (groundHits.length > 0) {
-                npc.position.y = groundHits[0].point.y; // Mantém no chão
+        originalAnimate(); // Roda a física e render do seu jogo primeiro
+        
+        let delta = clock.getDelta(); // Usa o clock do seu motor
+
+        npcs.forEach(npc => {
+            // 1. Atualizar animação 3D do NPC
+            if (npc.mixer) npc.mixer.update(0.015); // Força um delta estável para o mixer interno
+
+            // 2. Inteligência Artificial: Escolha de caminhos aleatórios
+            npc.changeTargetTimer -= 0.016;
+            if (npc.changeTargetTimer <= 0) {
+                // Escolhe um novo ponto no mapa para caminhar a cada 5-10 segundos
+                npc.targetPos.x = (Math.random() - 0.5) * 400;
+                npc.targetPos.z = (Math.random() - 0.5) * 400;
+                npc.changeTargetTimer = 5 + Math.random() * 5;
             }
 
-            // B. Movimentação para o Alvo
-            if (isMoving) {
-                npc.lookAt(targetPos.x, npc.position.y, targetPos.z);
-                npc.translateZ(moveSpeed);
-                
-                if (npc.position.distanceTo(new THREE.Vector3(targetPos.x, npc.position.y, targetPos.z)) < 2) {
-                    isMoving = false;
-                    if (npcIdle) { npcWalk.stop(); npcIdle.play(); }
+            // 3. Movimentação física em direção ao objetivo
+            let dir = new THREE.Vector3().subVectors(npc.targetPos, npc.mesh.position);
+            dir.y = 0;
+            if (dir.length() > 2) {
+                dir.normalize();
+                npc.mesh.position.addScaledVector(dir, npc.speed);
+                // Rotaciona o NPC para olhar para onde está andando
+                npc.mesh.rotation.y = Math.atan2(-dir.x, -dir.z);
+            }
+
+            // 4. Lógica de Interação: Se o jogador chegar muito perto, o NPC te olha
+            if (player) {
+                let distAoJogador = npc.mesh.position.distanceTo(player.position);
+                if (distAoJogador < 30) {
+                    // Para e encara o jogador se ele invadir o espaço dele
+                    npc.mesh.lookAt(player.position.x, npc.mesh.position.y, player.position.z);
+                    
+                    // Simulação de perda de vida opcional: NPCs se desgastam perto de você
+                    npc.health -= 0.05; 
+                    if(npc.health < 0) npc.health = npc.maxHealth; // Ressuscita para não sumir
                 }
             }
 
-            // C. Anti-Queda (Respawn)
-            if (npc.position.y < -50) {
-                npc.position.set(0, 20, 0);
-                console.log("NPC resgatado do limbo!");
-            }
+            // 5. Projeção 3D para 2D (Fazer a barra de vida seguir a cabeça do NPC na tela)
+            npc.mesh.getWorldPosition(tempV3);
+            tempV3.y += 12; // Altura da barra acima da cabeça do modelo
+            tempV3.project(camera); // Projeta a coordenada 3D na câmera do jogo
 
-            // D. Atualizar GUI (Mensagem e Indicador)
-            const screenPos = npc.position.clone().project(camera);
-            const x = (screenPos.x * 0.5 + 0.5) * window.innerWidth;
-            const y = (screenPos.y * -0.5 + 0.5) * window.innerHeight;
+            // Verifica se o NPC está na frente da câmera (visível)
+            if (tempV3.z <= 1) {
+                const x = (tempV3.x * .5 + .5) * window.innerWidth;
+                const y = (tempV3.y * -.5 + .5) * window.innerHeight;
 
-            if (screenPos.z < 1) { // Só mostra se estiver na frente da câmera
-                chatBubble.style.left = x + "px";
-                chatBubble.style.top = (y - 120) + "px";
-                indicator.style.left = x + "px";
-                indicator.style.top = (y - 10) + "px";
-                indicator.style.display = "block";
+                npc.ui.container.style.display = 'block';
+                npc.ui.container.style.left = `${x - 30}px`; // Centraliza os 60px de largura
+                npc.ui.container.style.top = `${y}px`;
+                
+                // Atualiza a largura da barra verde com base na porcentagem de vida
+                const pct = (npc.health / npc.maxHealth) * 100;
+                npc.ui.fill.style.width = `${Math.max(0, pct)}%`;
             } else {
-                chatBubble.style.display = "none";
-                indicator.style.display = "none";
+                npc.ui.container.style.display = 'none';
             }
-        }
-        oldAnimate();
+        });
     };
 })();
