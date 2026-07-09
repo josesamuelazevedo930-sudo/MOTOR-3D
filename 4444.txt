@@ -1,0 +1,71 @@
+// Remove painel anterior se houver para evitar duplicidade
+const oldPanel = document.getElementById('remote-panel');
+if(oldPanel) oldPanel.remove();
+
+// Injeta a biblioteca MQTT.js via CDN oficial
+const mqttScript = document.createElement('script');
+mqttScript.src = "https://unpkg.com/mqtt/dist/mqtt.min.js";
+document.head.appendChild(mqttScript);
+
+mqttScript.onload = () => {
+    // Gera um PIN estrito de 4 dígitos para a sala
+    const pin = Math.floor(1000 + Math.random() * 9000).toString();
+    const topic = "mundopedras/controle/" + pin;
+
+    // Conecta ao Broker Público da HiveMQ usando WebSocket Seguro
+    const client = mqtt.connect('wss://broker.hivemq.com:8884/mqtt');
+
+    // Interface visual no jogo
+    const infoDiv = document.createElement('div');
+    infoDiv.id = 'remote-panel';
+    infoDiv.style = "position:absolute; top:20px; left:20px; background:rgba(0,0,0,0.9); color:#00ff88; padding:15px; border-radius:10px; z-index:99999; font-family:monospace; border:2px solid #00ff88; text-align:center; box-shadow: 0 4px 15px rgba(0,255,136,0.4);";
+    infoDiv.innerHTML = `<div style='font-weight:bold;margin-bottom:5px;'>MQTT CONTROLE</div><div style='font-size:26px;color:#fff;font-weight:900;letter-spacing:2px;'>${pin}</div><div id='net-status' style='font-size:10px;color:#aaa;margin-top:5px;'>Conectando ao broker...</div>`;
+    document.body.appendChild(infoDiv);
+
+    client.on('connect', () => {
+        document.getElementById('net-status').innerText = "📡 AGUARDANDO CELULAR";
+        client.subscribe(topic, (err) => {
+            if (err) console.error("Erro ao assinar tópico MQTT:", err);
+        });
+    });
+
+    // Processa as mensagens recebidas instantaneamente
+    client.on('message', (top, message) => {
+        try {
+            const data = JSON.parse(message.toString());
+
+            if (data.status === "conectado") {
+                document.getElementById('net-status').innerText = "📱 CONTROLADOR ATIVO";
+                document.getElementById('net-status').style.color = "#00ffff";
+                infoDiv.style.borderColor = "#00ffff";
+            }
+
+            // Aplica os movimentos analógicos no motor do jogo
+            if (data.type === 'move') {
+                window.keys['KeyW'] = data.y < -0.2;
+                window.keys['KeyS'] = data.y > 0.2;
+                window.keys['KeyA'] = data.x < -0.2;
+                window.keys['KeyD'] = data.x > 0.2;
+            }
+
+            // Aplica a rotação de câmera
+            if (data.type === 'camera') {
+                if (Math.abs(data.x) > 0.05) {
+                    window.camRot -= data.x * 0.07;
+                }
+            }
+
+            // Executa a função de pulo nativa
+            if (data.type === 'jump') {
+                if (typeof window.jump === 'function') window.jump();
+            }
+        } catch (e) {
+            console.error("Erro ao processar dados do MQTT:", e);
+        }
+    });
+
+    // Remove do broker de forma limpa ao fechar a aba
+    window.addEventListener('beforeunload', () => {
+        client.end();
+    });
+};
