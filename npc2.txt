@@ -1,0 +1,93 @@
+// Sistema de NPCs para o Mundo das Pedras Pro
+(function() {
+    // 1. Verificar se o jogo já está inicializado e se a cena existe
+    if (!window.scene || !window.player || !window.loaderGLTF) {
+        alert("Erro: O motor 3D precisa estar completamente carregado primeiro!");
+        return;
+    }
+
+    // Criar um container global para os NPCs se ele não existir
+    if (!window.customNPCs) {
+        window.customNPCs = [];
+    }
+
+    // Configuração do NPC
+    const SOLDIER_URL = "https://threejs.org/examples/models/gltf/Soldier.glb";
+    
+    // Define a posição de spawn baseada na posição atual do jogador (um pouco à frente)
+    let spawnX = window.player.position.x + (Math.random() * 20 - 10);
+    let spawnZ = window.player.position.z - 30; // 30 unidades à frente
+    let spawnY = window.player.position.y;
+
+    // 2. Carregar o modelo do Soldado para o NPC
+    window.loaderGLTF.load(SOLDIER_URL, (gltf) => {
+        let npc = gltf.scene;
+        npc.position.set(spawnX, spawnY, spawnZ);
+
+        // Ajustar a escala do NPC para bater com o tamanho do player original do motor
+        let box = new THREE.Box3().setFromObject(npc);
+        let s = 8 / (box.getSize(new THREE.Vector3()).y || 1);
+        npc.scale.set(s, s, s);
+
+        // Adicionar o NPC na cena
+        window.scene.add(npc);
+
+        // 3. Configurar animações independentes para este NPC
+        let npcMixer = new THREE.AnimationMixer(npc);
+        let idleClip = gltf.animations.find(a => a.name.toLowerCase().match(/idle|static/)) || gltf.animations[0];
+        
+        if (idleClip) {
+            let npcIdleAction = npcMixer.clipAction(idleClip);
+            npcIdleAction.play();
+        }
+
+        // Guardar a referência do NPC para atualização de física/olhar no loop
+        window.customNPCs.push({
+            mesh: npc,
+            mixer: npcMixer
+        });
+
+        console.log("NPC Soldado spawnado com sucesso na posição: ", npc.position);
+    }, undefined, (err) => {
+        alert("Erro ao carregar o modelo do NPC Soldado.");
+    });
+
+    // 4. Injetar a lógica de atualização no loop de animação principal do jogo
+    // Se a função de atualização de NPCs já não estiver injetada, nós estendemos a função animate
+    if (!window.isNpcLoopInjected) {
+        window.isNpcLoopInjected = true;
+        
+        // Copia a função animate original do seu código
+        const originalAnimate = window.animate;
+        
+        // Sobrescreve a animate para rodar o comportamento do NPC junto com o jogo
+        window.animate = function() {
+            originalAnimate(); // Roda tudo que o seu jogo já fazia originalmente
+            
+            // Se houver NPCs no mundo, atualiza cada um deles
+            if (window.customNPCs && window.customNPCs.length > 0) {
+                // Usamos o delta do relógio global do seu código
+                let delta = window.clock ? window.clock.getDelta() : 0.016; 
+                
+                // Forçar um delta padrão caso o original retorne zero por ter sido lido duas vezes
+                if (delta === 0) delta = 0.016; 
+
+                window.customNPCs.forEach((npcObj) => {
+                    // Atualiza a animação (respiração/idling) do NPC
+                    if (npcObj.mixer) npcObj.mixer.update(delta);
+                    
+                    // Comportamento inteligente: Fazer o NPC olhar sempre para o Player
+                    if (window.player && npcObj.mesh) {
+                        // Faz o NPC rotacionar no eixo Y em direção ao jogador
+                        let targetPosition = new THREE.Vector3(
+                            window.player.position.x,
+                            npcObj.mesh.position.y, // Mantém a altura para não tombar
+                            window.player.position.z
+                        );
+                        npcObj.mesh.lookAt(targetPosition);
+                    }
+                });
+            }
+        };
+    }
+})();
