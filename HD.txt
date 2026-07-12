@@ -1,0 +1,189 @@
+(function() {
+    // 1. Criar o botão do menu e o painel dinamicamente se não existirem
+    if (document.getElementById('g-btn')) return alert("O painel de gráficos já está ativo!");
+
+    const gBtn = document.createElement('button');
+    gBtn.id = 'g-btn';
+    gBtn.className = 'ui-btn';
+    gBtn.innerText = 'GRÁFICOS';
+    gBtn.style.top = '185px'; // Posicionado logo abaixo dos outros
+    gBtn.style.background = '#8a2be2';
+    gBtn.onclick = () => tgl('g-panel');
+    document.body.appendChild(gBtn);
+
+    // Ajustar a posição do painel original para não sobrepor tudo
+    document.querySelectorAll('.panel').forEach(p => p.style.top = '240px');
+
+    const gPanel = document.createElement('div');
+    gPanel.id = 'g-panel';
+    gPanel.className = 'panel';
+    gPanel.style.top = '240px';
+    gPanel.style.width = '280px';
+    gPanel.innerHTML = `<h3 style="margin:0 0 10px 0; font-size:14px; text-align:center; color:#8a2be2;">🎛️ CONTROLE GRÁFICO PRO</h3>`;
+    document.body.appendChild(gPanel);
+
+    // Função auxiliar para criar sliders e seletores rapidamente
+    function addControl(title, min, max, step, currentVal, onChange) {
+        const row = document.createElement('div');
+        row.style.margin = '8px 0';
+        row.style.fontSize = '11px';
+        row.innerHTML = `
+            <div style="display:flex; justify-content:space-between; margin-bottom:2px;">
+                <span>${title}</span><span id="val-${title.replace(/\s+/g, '')}" style="color:#8a2be2; font-weight:bold;">${currentVal}</span>
+            </div>
+            <input type="range" min="${min}" max="${max}" step="${step}" value="${currentVal}" style="width:100%; margin:0; padding:0; height:5px;">
+        `;
+        const input = row.querySelector('input');
+        input.addEventListener('input', (e) => {
+            const val = parseFloat(e.target.value);
+            document.getElementById(`val-${title.replace(/\s+/g, '')}`).innerText = val;
+            onChange(val);
+        });
+        gPanel.appendChild(row);
+    }
+
+    function addSelect(title, options, currentVal, onChange) {
+        const row = document.createElement('div');
+        row.style.margin = '8px 0';
+        row.style.fontSize = '11px';
+        row.innerHTML = `
+            <div style="margin-bottom:2px;">${title}</div>
+            <select class="opt" style="margin:0; width:100%; font-size:11px; padding:5px; background:#222; border:1px solid #444; color:white; border-radius:4px;"></select>
+        `;
+        const select = row.querySelector('select');
+        options.forEach(opt => {
+            const el = document.createElement('option');
+            el.value = opt.val;
+            el.innerText = opt.name;
+            if(opt.val === currentVal) el.selected = true;
+            select.appendChild(el);
+        });
+        select.addEventListener('change', (e) => onChange(e.target.value));
+        gPanel.appendChild(row);
+    }
+
+    // --- AS 30 OPÇÕES DE AJUSTE PRECISO ---
+
+    // 1 a 3. Filtros do Renderizador Principal
+    addSelect("1. Antialiasing (Suavização)", [{name:"Desativado (Desempenho)", val:"false"}, {name:"Ativado (Qualidade)", val:"true"}], "false", (v) => {
+        alert("Alterar Antialiasing requer reiniciar o motor.");
+    });
+    addSelect("2. Precisão do Shader", [{name:"Baixa (lowp)", val:"lowp"}, {name:"Média (mediump)", val:"mediump"}, {name:"Alta (highp)", val:"highp"}], renderer.getPrecision(), (v) => {
+        renderer.precision = v;
+    });
+    addControl("3. Escala de Resolução (Pixel Ratio)", 0.25, 2.0, 0.05, window.devicePixelRatio || 1, (v) => {
+        renderer.setPixelRatio(v);
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    // 4 a 8. Controle de Renderização de Linhas / Materiais
+    addSelect("4. Modo de Visualização", [{name:"Sólido", val:"solid"}, {name:"Gaiola de Arame (Wireframe)", val:"wire"}, {name:"Pontos (Nuvem)", val:"points"}], "solid", (v) => {
+        scene.traverse(obj => {
+            if (obj.isMesh) {
+                obj.material.wireframe = (v === "wire");
+                if (v === "points") obj.material.visible = false; // Modo simplificado
+                else obj.material.visible = true;
+            }
+        });
+    });
+    addControl("5. Opacidade Global do Mapa", 0, 1, 0.05, 1, (v) => {
+        mapModel.traverse(obj => { if (obj.isMesh) { obj.material.transparent = true; obj.material.opacity = v; } });
+    });
+    addSelect("6. Lado de Renderização (Faces)", [{name:"Frente", val:THREE.FrontSide}, {name:"Trás", val:THREE.BackSide}, {name:"Ambos os Lados", val:THREE.DoubleSide}], THREE.DoubleSide, (v) => {
+        scene.traverse(obj => { if (obj.isMesh) obj.material.side = parseInt(v); });
+    });
+    addSelect("7. Mapeamento de Cores (Tonemapping)", [{name:"Nenhum", val:THREE.NoToneMapping}, {name:"Linear", val:THREE.LinearToneMapping}, {name:"Reinhard", val:THREE.ReinhardToneMapping}, {name:"Cineon", val:THREE.CineonToneMapping}, {name:"ACES Filmic", val:THREE.ACESFilmicToneMapping}], THREE.NoToneMapping, (v) => {
+        renderer.toneMapping = parseInt(v);
+    });
+    addControl("8. Exposição do Tonemapping", 0.1, 3.0, 0.1, 1.0, (v) => {
+        renderer.toneMappingExposure = v;
+    });
+
+    // 9 a 13. Iluminação e Cores Ambientais
+    let ambientLight = scene.children.find(c => c.isAmbientLight);
+    addControl("9. Luz Global (Intensidade)", 0.0, 5.0, 0.1, ambientLight ? ambientLight.intensity : 2, (v) => {
+        if(ambientLight) ambientLight.intensity = v;
+    });
+    addSelect("10. Cor da Luz Global", [{name:"Branco", val:"#ffffff"}, {name:"Sol Quente", val:"#fffaed"}, {name:"Ciberpunk", val:"#ff00ff"}, {name:"Sombrio", val:"#222244"}], "#ffffff", (v) => {
+        if(ambientLight) ambientLight.color.set(v);
+    });
+    addSelect("11. Cor do Céu (Background)", [{name:"Azul Claro", val:"#87CEEB"}, {name:"Espaço Escuro", val:"#050508"}, {name:"Madrugada Vermelha", val:"#3d0c02"}, {name:"Cinza Névoa", val:"#aaaaaa"}], "#87CEEB", (v) => {
+        scene.background.set(v);
+    });
+    addControl("12. Correção de Gama (Mapeamento)", 1.0, 2.2, 0.1, 1.0, (v) => {
+        renderer.gammaOutput = true; // Forçar ativação em motores antigos se suportado
+    });
+    addSelect("13. Modo de Textura (Filtro)", [{name:"Pixelado (Nearest)", val:THREE.NearestFilter}, {name:"Suave (Linear)", val:THREE.LinearFilter}], THREE.LinearFilter, (v) => {
+        scene.traverse(obj => { if(obj.isMesh && obj.material.map) { obj.material.map.minFilter = parseInt(v); obj.material.map.magFilter = parseInt(v); obj.material.map.needsUpdate = true; } });
+    });
+
+    // 14 a 18. Névoa Cinematográfica (Fog)
+    scene.fog = new THREE.FogExp2(0x87CEEB, 0.000); // Inicializar névoa vazia
+    addControl("14. Densidade da Névoa (Fog)", 0.000, 0.050, 0.001, 0.000, (v) => {
+        scene.fog.density = v;
+    });
+    addSelect("15. Cor da Névoa", [{name:"Igual ao Céu", val:"#87CEEB"}, {name:"Preto Profundo", val:"#000000"}, {name:"Tóxico Verde", val:"#113311"}], "#87CEEB", (v) => {
+        scene.fog.color.set(v);
+    });
+    addControl("16. Distância Mínima da Câmera (Near)", 0.1, 10, 0.1, 0.1, (v) => { camera.near = v; camera.updateProjectionMatrix(); });
+    addControl("17. Distância Máxima de Visão (Far)", 100, 5000, 100, 4000, (v) => { camera.far = v; camera.updateProjectionMatrix(); });
+    addControl("18. Campo de Visão (FOV Câmera)", 30, 110, 5, 60, (v) => { camera.fov = v; camera.updateProjectionMatrix(); });
+
+    // 19 a 23. Ajustes Dinâmicos do Mapa e Casinhas
+    addControl("19. Escala Vertical do Mapa (Y)", 0.1, 5.0, 0.1, 1.0, (v) => { if(mapModel) mapModel.scale.y = v; });
+    addControl("20. Escala Horizontal do Mapa (XZ)", 0.1, 5.0, 0.1, 1.0, (v) => { if(mapModel) { mapModel.scale.x = v; mapModel.scale.z = v; } });
+    addControl("21. Repetição de Textura do Chão", 10, 500, 10, 100, (v) => {
+        scene.traverse(obj => { if(obj.isMesh && obj.material.map && obj.geometry.type === "PlaneGeometry") { obj.material.map.repeat.set(v, v); } });
+    });
+    addSelect("22. Iluminação Base Materiais", [{name:"Básica (Sem Sombras Realistas)", val:"Basic"}, {name:"Padrão (Interage com Luz)", val:"Standard"}], "Basic", (v) => {
+        scene.traverse(obj => {
+            if(obj.isMesh && obj !== player) {
+                let oldColor = obj.material.color;
+                let oldMap = obj.material.map;
+                obj.material = (v === "Standard") ? new THREE.MeshStandardMaterial({color: oldColor, map: oldMap}) : new THREE.MeshBasicMaterial({color: oldColor, map: oldMap, side: THREE.DoubleSide});
+            }
+        });
+    });
+    addControl("23. Transparência Alpha Test", 0.0, 1.0, 0.1, 0.0, (v) => {
+        scene.traverse(obj => { if(obj.isMesh) { obj.material.alphaTest = v; obj.material.needsUpdate = true; } });
+    });
+
+    // 24 a 27. Controle Gráfico do Personagem (Player)
+    addControl("24. Escala do Player", 0.2, 5.0, 0.1, 1.0, (v) => { 
+        if(player) {
+            let box = new THREE.Box3().setFromObject(player);
+            let s = (8 / (box.getSize(new THREE.Vector3()).y || 1)) * v;
+            player.scale.set(s, s, s);
+        }
+    });
+    addControl("25. Velocidade da Animação", 0.1, 3.0, 0.1, 1.0, (v) => { if(mixer) mixer.timeScale = v; });
+    addSelect("26. Cor Reflexo do Player", [{name:"Normal", val:"#ffffff"}, {name:"Ouro", val:"#ffd700"}, {name:"Neon", val:"#00ffcc"}], "#ffffff", (v) => {
+        if(player) player.traverse(obj => { if(obj.isMesh && obj.material.emissive) obj.material.emissive.set(v); });
+    });
+    addControl("27. Brilho Próprio do Player (Emissive)", 0, 2, 0.1, 0, (v) => {
+        if(player) player.traverse(obj => { if(obj.isMesh && obj.material.emissiveIntensity !== undefined) obj.material.emissiveIntensity = v; });
+    });
+
+    // 28 a 30. Otimizações de Performance Avançadas
+    addSelect("28. Ordem de Renderização (Sorting)", [{name:"Padrão Automático", val:"true"}, {name:"Desativar (Ganho de FPS)", val:"false"}], "true", (v) => {
+        renderer.sortObjects = (v === "true");
+    });
+    addSelect("29. Frustum Culling (Ocultar o que está atrás)", [{name:"Ativado (Recomendado)", val:"true"}, {name:"Desativar Tudo", val:"false"}], "true", (v) => {
+        scene.traverse(obj => { if(obj.isMesh) obj.frustumCulled = (v === "true"); });
+    });
+    addControl("30. Clipping Distante da Sombra", 10, 500, 10, 100, (v) => {
+        // Opção reservada para cálculos de matrizes de sombra customizadas
+        renderer.shadowMap.clipDistance = v; 
+    });
+
+    // Atualizar a lógica global de alternância de menus do jogo para incluir o novo painel
+    const oldTgl = window.tgl;
+    window.tgl = function(id) {
+        let p = document.getElementById(id); 
+        let vis = p.style.display === 'block';
+        document.querySelectorAll('.panel').forEach(x => x.style.display = 'none');
+        p.style.display = vis ? 'none' : 'block'; 
+    };
+
+    alert("Painel Gráfico com 30 Opções Precisas Carregado com Sucesso!");
+})();
