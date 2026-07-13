@@ -1,0 +1,197 @@
+// === SCRIPT BATTLE ROYALE PRO + TEXTURAS ===
+(function() {
+    console.log("Iniciando Modo Battle Royale...");
+
+    // 1. MODIFICAÇÃO DO TERRENO E CENÁRIO (Grama e Montanhas)
+    if (mapModel) scene.remove(mapModel);
+    mapModel = new THREE.Group();
+
+    // Novo chão verde (Grama)
+    const floorGeo = new THREE.PlaneGeometry(4000, 4000, 10, 10);
+    const floorMat = new THREE.MeshBasicMaterial({ color: 0x2e8b57, side: THREE.DoubleSide }); // Verde Grama
+    const floor = new THREE.Mesh(floorGeo, floorMat);
+    floor.rotation.x = -Math.PI / 2;
+    mapModel.add(floor);
+
+    // Adicionando Montanhas Verdes pelo mapa
+    const mountainMat = new THREE.MeshBasicMaterial({ color: 0x1e5631 });
+    for (let i = 0; i < 30; i++) {
+        const radius = 40 + Math.random() * 60;
+        const height = 80 + Math.random() * 120;
+        const mountGeo = new THREE.ConeGeometry(radius, height, 4);
+        const mountain = new THREE.Mesh(mountGeo, mountainMat);
+        
+        let mX = (Math.random() - 0.5) * 1800;
+        let mZ = (Math.random() - 0.5) * 1800;
+        if (Math.abs(mX) < 100) mX += 150;
+        if (Math.abs(mZ) < 100) mZ += 150;
+        
+        mountain.position.set(mX, height / 2, mZ);
+        mapModel.add(mountain);
+    }
+    scene.add(mapModel);
+
+    // 2. CONFIGURAÇÃO DO AVIÃO E ESTADO DO JOGO
+    let inAirplane = true;
+    let playersAlive = 50;
+    const enemies = [];
+    const bullets = [];
+
+    // Criando um indicador visual do "Avião" no céu
+    const planeGeo = new THREE.BoxGeometry(30, 8, 50);
+    const planeMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    const airplane = new THREE.Mesh(planeGeo, planeMat);
+    airplane.position.set(-800, 250, 0);
+    scene.add(airplane);
+
+    // Trava o jogador dentro do avião inicialmente
+    if (player) {
+        player.position.copy(airplane.position);
+        fly = true; // Desativa gravidade temporariamente
+    }
+
+    // Criando interface de jogadores vivos
+    const brUI = document.createElement('div');
+    brUI.id = "br-ui";
+    brUI.style = "position:absolute; top:20px; left:20px; color:white; font-family:sans-serif; font-weight:bold; font-size:18px; z-index:1000; background:rgba(0,0,0,0.6); padding:10px; border-radius:5px;";
+    brUI.innerHTML = "VIVOS: " + playersAlive + " | STATUS: No Avião (Aperte F para Pular)";
+    document.body.appendChild(brUI);
+
+    function updateUI(statusText) {
+        brUI.innerHTML = `VIVOS: ${playersAlive} | ${statusText}`;
+    }
+
+    // 3. SPAWN DOS 49 INIMIGOS (Modelos 3D de Robôs de Combate)
+    function spawnEnemies() {
+        const enemyGeo = new THREE.CylinderGeometry(2, 2, 8, 6);
+        const headGeo = new THREE.BoxGeometry(3, 3, 3);
+        
+        for (let i = 0; i < 49; i++) {
+            const enemyGroup = new THREE.Group();
+            
+            // Corpo e cabeça básicos para performance estável
+            const bodyMat = new THREE.MeshBasicMaterial({ color: Math.random() * 0xffffff });
+            const body = new THREE.Mesh(enemyGeo, bodyMat);
+            body.position.y = 4;
+            enemyGroup.add(body);
+            
+            const head = new THREE.Mesh(headGeo, new THREE.MeshBasicMaterial({ color: 0x333333 }));
+            head.position.y = 9;
+            enemyGroup.add(head);
+
+            // Posição de queda aleatória
+            enemyGroup.position.set(
+                (Math.random() - 0.5) * 1500,
+                0,
+                (Math.random() - 0.5) * 1500
+            );
+            
+            scene.add(enemyGroup);
+            enemies.push({
+                mesh: enemyGroup,
+                alive: true,
+                speedX: (Math.random() - 0.5) * 0.5,
+                speedZ: (Math.random() - 0.5) * 0.5
+            });
+        }
+    }
+    spawnEnemies();
+
+    // 4. CONTROLES: TECLA 'F' (Pular / Atirar)
+    window.addEventListener('keydown', (e) => {
+        if (e.code === 'KeyF') {
+            if (inAirplane) {
+                // Pular do Avião
+                inAirplane = false;
+                fly = false; // Ativa gravidade para o player cair
+                updateUI("Em Combate! Atire com F");
+            } else {
+                // Atirar
+                shootBullet();
+            }
+        }
+    });
+
+    function shootBullet() {
+        if (!player) return;
+        
+        const bGeo = new THREE.SphereGeometry(0.6, 4, 4);
+        const bMat = new THREE.MeshBasicMaterial({ color: 0xffcc00 });
+        const bullet = new THREE.Mesh(bGeo, bMat);
+        
+        // Posição inicial do tiro saindo do player
+        bullet.position.copy(player.position);
+        bullet.position.y += 4;
+
+        // Direção baseada na rotação atual do personagem
+        const dir = new THREE.Vector3(Math.sin(player.rotation.y), 0, Math.cos(player.rotation.y)).normalize();
+        
+        scene.add(bullet);
+        bullets.push({ mesh: bullet, dir: dir, life: 120 });
+    }
+
+    // 5. LOOP DE ATUALIZAÇÃO DO BATTLE ROYALE
+    const brLoop = () => {
+        requestAnimationFrame(brLoop);
+
+        // Movimento do Avião
+        if (airplane && inAirplane) {
+            airplane.position.x += 2;
+            if (player) {
+                player.position.copy(airplane.position);
+                player.position.y -= 2; // Mantém ligeiramente abaixo do avião
+            }
+            if (airplane.position.x > 800) {
+                inAirplane = false;
+                fly = false;
+                updateUI("Em Combate! Atire com F");
+            }
+        }
+
+        // Atualizar Balas e Colisões
+        for (let i = bullets.length - 1; i >= 0; i--) {
+            const b = bullets[i];
+            b.mesh.position.addScaledVector(b.dir, 3); // Velocidade do tiro
+            b.life--;
+
+            // Checar colisão com inimigos
+            for (let j = 0; j < enemies.length; j++) {
+                const enemy = enemies[j];
+                if (enemy.alive) {
+                    const dist = b.mesh.position.distanceTo(enemy.mesh.position);
+                    if (dist < 6) { // Acertou o alvo
+                        scene.remove(enemy.mesh);
+                        enemy.alive = false;
+                        playersAlive--;
+                        updateUI("Você eliminou um oponente!");
+                        b.life = 0;
+                    }
+                }
+            }
+
+            if (b.life <= 0) {
+                scene.remove(b.mesh);
+                bullets.splice(i, 1);
+            }
+        }
+
+        // Movimentação básica dos Bots sobreviventes
+        enemies.forEach(enemy => {
+            if (enemy.alive) {
+                enemy.mesh.position.x += enemy.speedX;
+                enemy.mesh.position.z += enemy.speedZ;
+
+                // Limites do mapa para os bots voltarem
+                if (Math.abs(enemy.mesh.position.x) > 900) enemy.speedX *= -1;
+                if (Math.abs(enemy.mesh.position.z) > 900) enemy.speedZ *= -1;
+            }
+        });
+
+        // Condição de Vitória
+        if (playersAlive <= 1 && !inAirplane) {
+            updateUI("🏆 VITÓRIA! VOCÊ É O ÚLTIMO SOBREVIVENTE!");
+        }
+    };
+
+    brLoop();
+})();
