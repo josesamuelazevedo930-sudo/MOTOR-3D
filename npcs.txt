@@ -1,0 +1,109 @@
+(function spawnSoldierNPCs() {
+    if (!scene || !loaderGLTF) {
+        alert("O motor do jogo ainda não foi inicializado!");
+        return;
+    }
+
+    const npcCount = 12;
+    const npcs = [];
+    const soldierUrl = "https://threejs.org/examples/models/gltf/Soldier.glb";
+
+    // Frases aleatórias que os NPCs vão falar
+    const phrases = [
+        "Patrulhando a área!",
+        "Tudo limpo por aqui.",
+        "Quem vem lá?",
+        "Em guarda!",
+        "Cuidado com os obstáculos!",
+        "Procurando suprimentos...",
+        "Área segura!",
+        "Pronto para a ação!"
+    ];
+
+    // Função para criar a textura do texto acima do NPC
+    function createTextSprite(text) {
+        const canvas = document.createElement('canvas');
+        canvas.width = 512;
+        canvas.height = 128;
+        const ctx = canvas.getContext('2d');
+
+        // Fundo do balão
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+        ctx.roundRect ? ctx.roundRect(10, 10, 492, 108, 20) : ctx.fillRect(10, 10, 492, 108);
+        ctx.fill();
+
+        // Borda do balão
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 4;
+        ctx.stroke();
+
+        // Texto
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'Bold 32px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(text, 256, 64);
+
+        const texture = new THREE.CanvasTexture(canvas);
+        const spriteMaterial = new THREE.SpriteMaterial({ map: texture, depthTest: false });
+        const sprite = new THREE.Sprite(spriteMaterial);
+        sprite.scale.set(12, 3, 1);
+        return sprite;
+    }
+
+    // Carrega o modelo base do soldado
+    loaderGLTF.load(soldierUrl, (gltf) => {
+        for (let i = 0; i < npcCount; i++) {
+            const npcGroup = new THREE.Group();
+            const model = gltf.scene.clone();
+
+            // Ajuste de escala similar ao do player
+            let box = new THREE.Box3().setFromObject(model);
+            let s = 8 / (box.getSize(new THREE.Vector3()).y || 1);
+            model.scale.set(s, s, s);
+            npcGroup.add(model);
+
+            // Posição aleatória pelo mapa
+            const posX = (Math.random() - 0.5) * 300;
+            const posZ = (Math.random() - 0.5) * 300;
+            npcGroup.position.set(posX, 0, posZ);
+
+            // Atributos de vida e estado
+            const npcData = {
+                mesh: npcGroup,
+                maxHealth: 100,
+                health: 100,
+                id: i + 1,
+                textSprite: null
+            };
+
+            // Criar e posicionar o texto de fala acima da cabeça
+            const initialText = `Soldado #${npcData.id} [HP: ${npcData.health}]`;
+            const sprite = createTextSprite(initialText);
+            sprite.position.set(0, 10, 0); // Altura acima da cabeça
+            npcGroup.add(sprite);
+            npcData.textSprite = sprite;
+
+            scene.add(npcGroup);
+            npcs.push(npcData);
+        }
+
+        // Loop de mensagens e movimentação sutil
+        setInterval(() => {
+            npcs.forEach(npc => {
+                if (npc.health > 0) {
+                    const randomPhrase = phrases[Math.floor(Math.random() * phrases.length)];
+                    
+                    // Atualiza a textura do texto com a frase e a vida atual
+                    const newSprite = createTextSprite(`${randomPhrase} (${npc.health} HP)`);
+                    npc.textSprite.material.map.dispose(); // Libera a memória anterior
+                    npc.textSprite.material.map = newSprite.material.map;
+                    npc.textSprite.material.needsUpdate = true;
+                }
+            });
+        }, 5000); // Troca de mensagem a cada 5 segundos
+
+        window.npcList = npcs; // Salva a lista globalmente caso queira interagir depois
+        alert(`${npcCount} NPCs Soldados criados com sucesso!`);
+    });
+})();
