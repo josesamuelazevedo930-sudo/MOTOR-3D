@@ -1,0 +1,57 @@
+(function initRemoteReceiver() {
+    if (window.remoteReceiverActive) {
+        alert("O receptor remoto já está ativo!");
+        return;
+    }
+
+    // Define uma sala/tópico único para o controle remoto não interferir com outros jogadores
+    const REMOTE_TOPIC = "pedras_game/remote_control/" + playerId;
+    window.remoteReceiverActive = true;
+
+    // Oculta os controles nativos do jogo
+    document.getElementById('joystick-container').style.display = 'none';
+    document.getElementById('jump-btn').style.display = 'none';
+
+    // Cria um painel na tela informando o tópico de conexão
+    const infoBox = document.createElement('div');
+    infoBox.style.cssText = `
+        position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+        background: rgba(0,0,0,0.85); color: #00ff00; border: 1px solid #00ff00;
+        padding: 8px 14px; border-radius: 8px; font-family: monospace; font-size: 11px;
+        z-index: 10000; text-align: center; box-shadow: 0 0 10px rgba(0,255,0,0.5);
+    `;
+    infoBox.innerHTML = `
+        📡 <b>MODO RECEPTOR ATIVO</b><br>
+        Tópico de Conexão: <span style="color:#fff;">${REMOTE_TOPIC}</span>
+    `;
+    document.body.appendChild(infoBox);
+
+    // Sobrescreve a escuta do MQTT para processar comandos remotos
+    if (mqttClient && mqttClient.isConnected()) {
+        mqttClient.subscribe(REMOTE_TOPIC);
+        
+        const originalOnMessage = mqttClient.onMessageArrived;
+        mqttClient.onMessageArrived = (message) => {
+            try {
+                if (message.destinationName === REMOTE_TOPIC) {
+                    const data = JSON.parse(message.payloadString);
+                    if (data.type === "control") {
+                        // Atualiza as variáveis globais de movimento do jogo
+                        joyX = data.jx;
+                        joyY = data.jy;
+                        if (data.jump) {
+                            jump();
+                        }
+                    }
+                } else if (originalOnMessage) {
+                    originalOnMessage(message);
+                }
+            } catch (e) {
+                console.error("Erro ao processar comando remoto:", e);
+            }
+        };
+        alert("✅ Receptor Ativado!\nConecte o transmissor ao tópico:\n" + REMOTE_TOPIC);
+    } else {
+        alert("❌ Erro: O MQTT precisa estar conectado para ativar o receptor.");
+    }
+})();
